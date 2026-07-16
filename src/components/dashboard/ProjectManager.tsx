@@ -29,10 +29,7 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({ onOpenProject })
     loadProject,
     deleteProject,
     duplicateProject,
-    renameProject,
-    user,
-    isSupabaseConfigured,
-    setIsAuthOpen
+    renameProject
   } = useProject();
 
   const [search, setSearch] = useState('');
@@ -97,25 +94,6 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({ onOpenProject })
 
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-950 overflow-y-auto p-6 sm:p-8 select-none">
-      {/* Informative banner if Supabase is configured but not connected (Requirement #6) */}
-      {isSupabaseConfigured && !user && (
-        <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-200">
-          <div className="flex items-start gap-2.5 text-blue-700 dark:text-blue-400">
-            <Plus size={18} className="shrink-0 mt-0.5 rotate-45" />
-            <div className="text-xs">
-              <span className="font-bold block">Sincronización en la Nube disponible</span>
-              <span>Inicia sesión para guardar tus mapas en Supabase, registrar versiones de cambio y colaborar con tu equipo en tiempo real.</span>
-            </div>
-          </div>
-          <button
-            onClick={() => setIsAuthOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer shadow-md shadow-blue-500/10"
-          >
-            Iniciar Sesión
-          </button>
-        </div>
-      )}
-
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800 mb-8">
         <div>
@@ -127,15 +105,6 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({ onOpenProject })
         </div>
         
         <div className="flex items-center gap-2 self-start sm:self-center">
-          {isSupabaseConfigured && !user && (
-            <button
-              onClick={() => setIsAuthOpen(true)}
-              className="flex items-center justify-center gap-2 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
-            >
-              <span>Conectar Supabase</span>
-            </button>
-          )}
-
           <button
             onClick={handleCreate}
             className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md shadow-blue-500/10 transition-all active:scale-95 cursor-pointer"

@@ -7,13 +7,12 @@ import { SidebarRight } from './components/layout/SidebarRight';
 import { TimelinePanel } from './components/layout/TimelinePanel';
 import { MetricsDashboard } from './components/dashboard/MetricsDashboard';
 import { ProjectManager } from './components/dashboard/ProjectManager';
-import { AuthView } from './components/dashboard/AuthView';
 import './App.css';
 
 function AppContent() {
   const [viewMode, setViewMode] = useState<'manager' | 'editor'>('manager');
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
-  const { isSupabaseConfigured, isLoading, isAuthOpen, setIsAuthOpen } = useProject();
+  const { isSupabaseConfigured, isLoading } = useProject();
 
   if (isLoading) {
     return (
@@ -27,7 +26,7 @@ function AppContent() {
   }
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-slate-50 dark:bg-slate-955 overflow-hidden text-slate-800 dark:text-slate-200">
+    <div className="flex flex-col h-screen w-screen bg-slate-50 dark:bg-slate-950 overflow-hidden text-slate-800 dark:text-slate-200">
       {/* Demo banner when Supabase configuration is missing */}
       {!isSupabaseConfigured && (
         <div className="bg-amber-600 text-white text-[11px] font-bold px-4 py-1.5 text-center flex items-center justify-center gap-2 select-none z-50 shrink-0 shadow-md">
@@ -65,22 +64,6 @@ function AppContent() {
         </>
       ) : (
         <ProjectManager onOpenProject={() => setViewMode('editor')} />
-      )}
-
-      {/* Dismissible Login Modal Overlay (Requirement #6) */}
-      {isAuthOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
-          <div className="relative max-w-md w-full mx-4">
-            <button 
-              onClick={() => setIsAuthOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white z-50 bg-slate-900/60 p-1.5 rounded-full border border-slate-800 hover:border-slate-600 transition-all cursor-pointer text-xs font-bold w-7 h-7 flex items-center justify-center"
-              title="Cerrar"
-            >
-              ✕
-            </button>
-            <AuthView />
-          </div>
-        </div>
       )}
     </div>
   );

@@ -13,6 +13,9 @@ import {
 } from '@xyflow/react';
 import { db, supabase, isSupabaseConfigured, type VsmProject, type VsmProjectVersion } from '../lib/supabase';
 
+// Force Public and Anonymous access (No Auth required)
+export const PUBLIC_ACCESS = true;
+
 type Theme = 'light' | 'dark';
 
 interface HistoryState {
@@ -31,7 +34,7 @@ interface ProjectContextProps {
   theme: Theme;
   versions: VsmProjectVersion[];
   
-  // Auth state
+  // Auth state (Always null/empty in public mode)
   user: any | null;
   signOut: () => Promise<void>;
   isSupabaseConfigured: boolean;
@@ -90,9 +93,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [theme, setTheme] = useState<Theme>('dark');
   const [debugConnections, setDebugConnections] = useState(false);
 
-  // Auth & login modal state
-  const [user, setUser] = useState<any>(null);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  // In public mode, user session is always null and login modal is disabled
+  const [user] = useState<any>(null);
+  const [isAuthOpen] = useState(false);
 
   // History State
   const [history, setHistory] = useState<HistoryState[]>([]);
@@ -101,7 +104,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitialLoadRef = useRef(true);
 
-  // Sync class on documentElement for Tailwind theme
+  // Sync theme
   useEffect(() => {
     const root = window.document.documentElement;
     if (theme === 'dark') {
@@ -113,7 +116,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [theme]);
 
-  // Loading safety timeout: maximum 10 seconds to prevent infinite lockups
+  // Loading safety timeout
   useEffect(() => {
     if (isLoading) {
       const timer = setTimeout(() => {
@@ -124,124 +127,110 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [isLoading]);
 
-  // Close login modal automatically on successful session loading
+  // App initialization
   useEffect(() => {
-    if (user) {
-      setIsAuthOpen(false);
-    }
-  }, [user]);
-
-  // Monitor Supabase session states
-  useEffect(() => {
-    console.log('🏁 VSM Studio: Iniciando flujo de carga de la aplicación...');
+    console.log('🏁 VSM Studio: Iniciando flujo en Modo Público (Acceso Libre)...');
     console.log('🔍 VSM Studio: Verificando configuración de Supabase... Configurado:', isSupabaseConfigured);
-
-    if (isSupabaseConfigured && supabase) {
-      // Fetch initial session
-      supabase.auth.getSession().then(({ data: { session }, error }) => {
-        if (error) {
-          console.error('❌ VSM Studio: Fallo al verificar sesión inicial:', error.message);
-        }
-        const activeUser = session?.user ?? null;
-        console.log('👤 VSM Studio: Carga de usuario/sesión inicial completada - Usuario:', activeUser ? activeUser.email : 'No autenticado');
-        setUser(activeUser);
-      });
-
-      // Listen for auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        const activeUser = session?.user ?? null;
-        console.log('👤 VSM Studio: Cambio de estado Auth detectado - Usuario:', activeUser ? activeUser.email : 'Sesión cerrada');
-        setUser(activeUser);
-      });
-
-      return () => {
-        subscription.unsubscribe();
-      };
-    } else {
-      console.log('👤 VSM Studio: Supabase no configurado. Utilizando modo local.');
-      setIsLoading(false);
-    }
+    
+    // Auth listeners are completely ignored in public mode to disable login overrides.
+    setIsLoading(false);
   }, []);
 
-  // Load all projects on initial mount / user state change
+  // Helper functions for local fallback
+  const getLocalProjects = (): VsmProject[] => {
+    const data = localStorage.getItem('vsm_projects');
+    return data ? JSON.parse(data) : [];
+  };
+
+  // Load all projects from storage (LocalStorage is primary for anonymous, Supabase is fallback)
   const loadProjects = useCallback(async () => {
-    console.log('📂 VSM Studio: Iniciando carga de proyectos desde el backend...');
+    console.log('📂 VSM Studio: Iniciando carga de proyectos locales...');
     setIsLoading(true);
     try {
+      // In public mode, we load local storage projects by default (simulating Draw.io)
       const data = await db.getProjects();
-      console.log(`📂 VSM Studio: Proyectos cargados con éxito (${data.length} encontrados).`);
+      console.log(`📂 VSM Studio: Proyectos locales cargados con éxito (${data.length} encontrados).`);
       setProjects(data);
+
+      // Check query parameters to load shared diagrams (Requirement #9)
+      const params = new URLSearchParams(window.location.search);
+      const sharedFile = params.get('file');
+      const sharedId = params.get('id');
+
+      if (sharedFile && isSupabaseConfigured && supabase) {
+        console.log(`🗺️ VSM Studio: Cargando diagrama compartido desde Storage: ${sharedFile}`);
+        try {
+          const { data: fileData, error: fileErr } = await supabase.storage
+            .from('vsm-files')
+            .download(sharedFile);
+          if (fileErr) throw fileErr;
+          
+          const fileText = await fileData.text();
+          const projectData = JSON.parse(fileText);
+          
+          const newProj: VsmProject = {
+            id: projectData.id || crypto.randomUUID(),
+            name: projectData.name || 'VSM Compartido',
+            author: projectData.author || 'Lean Expert',
+            nodes: projectData.nodes || [],
+            edges: projectData.edges || [],
+            viewport: projectData.viewport || { x: 0, y: 0, zoom: 1 },
+            created_at: projectData.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          setProjects(prev => [newProj, ...prev.filter(p => p.id !== newProj.id)]);
+          setActiveProject(newProj);
+          setNodesState(newProj.nodes);
+          setEdgesState(newProj.edges);
+          setHistory([{ nodes: newProj.nodes, edges: newProj.edges }]);
+          setHistoryIndex(0);
+          console.log('🗺️ VSM Studio: Diagrama compartido cargado exitosamente.');
+          setIsLoading(false);
+          return;
+        } catch (fetchErr: any) {
+          console.error('❌ VSM Studio: Error al cargar el archivo de compartidos:', fetchErr.message || fetchErr);
+          alert(`Error al cargar el archivo compartido: ${fetchErr.message || fetchErr}`);
+        }
+      }
+
+      if (sharedId) {
+        console.log(`🗺️ VSM Studio: Detectado ID compartido en URL: ${sharedId}. Cargando...`);
+        await loadProject(sharedId);
+        return;
+      }
       
       // Load last active project, or create one if empty
       if (data.length > 0) {
         console.log(`🗺️ VSM Studio: Cargando el proyecto activo por defecto: ${data[0].name}`);
         await loadProject(data[0].id);
       } else {
-        console.log('🗺️ VSM Studio: No se encontraron proyectos. Intentando crear proyecto por defecto...');
-        try {
-          const defaultProj = await createNewProject('Mi Primer VSM', user?.email || 'Lean Expert');
-          console.log('🗺️ VSM Studio: Proyecto por defecto creado con éxito:', defaultProj.name);
-          await loadProject(defaultProj.id);
-        } catch (createErr: any) {
-          console.error('❌ VSM Studio: Error SQL o RLS al crear proyecto por defecto en Supabase:', createErr);
-          
-          // FALLBACK: Create in-memory local temporary project to avoid blocking the app
-          console.log('⚠️ VSM Studio: Activando fallback de proyecto temporal en memoria.');
-          const tempProj = {
-            id: 'temp-project-id',
-            name: 'Proyecto Temporal (Sin conexión)',
-            author: user?.email || 'Lean Expert',
-            nodes: [],
-            edges: [],
-            viewport: { x: 0, y: 0, zoom: 1 },
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          };
-          setProjects([tempProj]);
-          setActiveProject(tempProj);
-          setNodesState([]);
-          setEdgesState([]);
-        }
+        console.log('🗺️ VSM Studio: No se encontraron proyectos. Creando proyecto local por defecto...');
+        const defaultProj = await createNewProject('Mi Primer VSM', 'Lean Expert');
+        await loadProject(defaultProj.id);
       }
     } catch (e: any) {
-      console.error('❌ VSM Studio: Error crítico al cargar proyectos:', e.message || e);
-      alert(`Error al inicializar proyectos: ${e.message || e}`);
+      console.error('❌ VSM Studio: Error al cargar proyectos:', e.message || e);
       setProjects([]);
       setActiveProject(null);
     } finally {
       setIsLoading(false);
       console.log('✨ VSM Studio: Fin de inicialización de proyectos. Interfaz lista.');
     }
-  }, [user]);
+  }, []);
 
-  // Trigger projects fetch when user logs in, or fallback for local mode
+  // Trigger projects fetch on load
   useEffect(() => {
-    if (!isSupabaseConfigured || user) {
-      loadProjects();
-    } else {
-      console.log('👤 VSM Studio: Cargando proyectos en modo local.');
-      setProjects([]);
-      setActiveProject(null);
-      setNodesState([]);
-      setEdgesState([]);
-      setVersions([]);
-      // Settle the loading state for unauthenticated Supabase mode (Requirement #6)
-      setIsLoading(false);
-    }
-  }, [user, loadProjects]);
+    loadProjects();
+  }, [loadProjects]);
 
-  const signOut = async () => {
-    if (isSupabaseConfigured && supabase) {
-      await supabase.auth.signOut();
-      setUser(null);
-    }
-  };
+  // Sign out is a no-op in public mode
+  const signOut = async () => {};
 
   // Load a single project into the workspace
   const loadProject = async (id: string) => {
     setIsLoading(true);
     try {
-      console.log(`📂 VSM Studio: Solicitando carga de proyecto específico ID: ${id}`);
+      console.log(`📂 VSM Studio: Solicitando carga de proyecto ID: ${id}`);
       const project = await db.getProject(id);
       if (project) {
         console.log(`🗺️ VSM Studio: Carga de mapa asociada a proyecto '${project.name}' completada.`);
@@ -261,9 +250,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     } catch (e: any) {
       console.error(`❌ VSM Studio: Error al cargar el proyecto ${id}:`, e.message || e);
-      alert(`Error al cargar el proyecto: ${e.message || e}`);
-      setNodesState([]);
-      setEdgesState([]);
+      // Fallback to local storage if DB query fails or is blocked
+      const localP = getLocalProjects().find(p => p.id === id);
+      if (localP) {
+        setActiveProject(localP);
+        setNodesState(localP.nodes || []);
+        setEdgesState(localP.edges || []);
+        setHistory([{ nodes: localP.nodes || [], edges: localP.edges || [] }]);
+        setHistoryIndex(0);
+      } else {
+        alert(`Error al cargar el proyecto: ${e.message || e}`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -306,7 +303,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (updatedProjects.length > 0) {
         await loadProject(updatedProjects[0].id);
       } else {
-        const defaultProj = await createNewProject('Mi Primer VSM', user?.email || 'Lean Expert');
+        const defaultProj = await createNewProject('Mi Primer VSM', 'Lean Expert');
         await loadProject(defaultProj.id);
       }
     }
@@ -318,7 +315,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!target) return;
     
     const dupName = `${target.name} (Copia)`;
-    const newProj = await db.createProject(dupName, user?.email || target.author);
+    const newProj = await db.createProject(dupName, target.author);
     
     const updatedProj = await db.saveProject({
       ...newProj,
@@ -327,7 +324,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       viewport: { ...target.viewport },
     });
 
-    // Create a duplication version in history
     await db.createVersion(
       updatedProj.id,
       `Duplicado de: ${target.name}`,
@@ -381,7 +377,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await saveNewVersion(`Restauración: ${version.name}`, 'Restauración');
   };
 
-  // Autosave trigger on canvas changes
+  // Autosave trigger on changes
   useEffect(() => {
     if (!activeProject) return;
     if (isInitialLoadRef.current) {
@@ -395,7 +391,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     saveTimeoutRef.current = setTimeout(() => {
       saveCurrentProject();
-    }, 1500); // 1.5s debounce
+    }, 1500);
 
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -581,7 +577,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       signOut,
       isSupabaseConfigured,
       isAuthOpen,
-      setIsAuthOpen,
+      setIsAuthOpen: () => {}, // Disable auth triggers in public mode
       
       loadProjects,
       loadProject,

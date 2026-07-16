@@ -18,7 +18,6 @@ import {
   Copy,
   AlertTriangle,
   Info,
-  LogOut,
   CloudLightning
 } from 'lucide-react';
 import { exportToPng, exportToJpg, exportToJson, exportToPdf } from '../../utils/exportUtils';
@@ -47,11 +46,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
     nodes,
     setNodes,
     edges,
-    user,
-    signOut,
     isSupabaseConfigured,
-    loadVersions,
-    setIsAuthOpen
+    loadVersions
   } = useProject();
 
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
@@ -739,37 +735,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
           {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
         </button>
 
-        {/* Logged in profile & logout */}
-        {isSupabaseConfigured && user ? (
-          <>
-            <div className="h-5 w-px bg-slate-200 dark:bg-slate-800" />
-            <div className="flex items-center gap-1.5">
-              <div className="flex items-center gap-1 px-2.5 py-1 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-semibold max-w-[150px] truncate" title={user.email}>
-                <User size={13} className="text-blue-500 shrink-0" />
-                <span className="truncate hidden sm:inline max-w-[90px]">{user.email.split('@')[0]}</span>
-              </div>
-              <button
-                onClick={signOut}
-                className="p-1.5 bg-red-50 dark:bg-red-950/20 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors cursor-pointer border border-red-200/50 dark:border-red-900/30"
-                title="Cerrar Sesión"
-              >
-                <LogOut size={13} />
-              </button>
-            </div>
-          </>
-        ) : isSupabaseConfigured ? (
-          <>
-            <div className="h-5 w-px bg-slate-200 dark:bg-slate-800" />
-            <button
-              onClick={() => setIsAuthOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer active:scale-95 shadow shadow-blue-500/10"
-              title="Conectarse a Supabase"
-            >
-              <User size={13} />
-              <span>Conectar</span>
-            </button>
-          </>
-        ) : null}
+
       </div>
 
       {/* Settings Modal */}
