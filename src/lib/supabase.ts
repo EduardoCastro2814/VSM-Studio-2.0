@@ -149,17 +149,20 @@ export const db = {
 
     if (isSupabaseConfigured && supabase) {
       const { data: { user } } = await supabase.auth.getUser();
+      const insertObj: any = {
+        id: newProjectId,
+        name: name
+      };
       if (user) {
-        // 1. Create project
-        const { data: projData, error: projError } = await supabase
-          .from('projects')
-          .insert([{
-            id: newProjectId,
-            name: name,
-            owner_id: user.id
-          }])
-          .select()
-          .single();
+        insertObj.owner_id = user.id;
+      }
+
+      // 1. Create project
+      const { data: projData, error: projError } = await supabase
+        .from('projects')
+        .insert([insertObj])
+        .select()
+        .single();
 
         if (!projError && projData) {
           // 2. Create default VSM Map
@@ -178,7 +181,7 @@ export const db = {
             
             return {
               ...newProject,
-              author: user.email || author,
+              author: user?.email || author,
               created_at: projData.created_at,
               updated_at: projData.updated_at
             };
@@ -187,7 +190,6 @@ export const db = {
         } else {
           console.error('❌ Supabase: Error SQL o RLS al crear el proyecto:', projError?.message || projError || 'Error desconocido');
         }
-      }
     }
 
     const projects = getLocalProjects();
@@ -373,8 +375,7 @@ export const db = {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Usuario no autenticado.');
+      await supabase.auth.getUser();
 
       // Find the associated map ID
       const { data: mapData, error: mapError } = await supabase

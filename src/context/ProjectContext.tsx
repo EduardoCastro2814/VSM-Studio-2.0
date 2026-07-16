@@ -34,6 +34,11 @@ interface ProjectContextProps {
   theme: Theme;
   versions: VsmProjectVersion[];
   
+  // Save status states (Requirements #2, #3, #8)
+  saveStatus: 'unsaved' | 'saving' | 'saved';
+  lastSavedTime: Date | null;
+  lastSaveError: string | null;
+  
   // Auth state (Always null/empty in public mode)
   user: any | null;
   signOut: () => Promise<void>;
@@ -93,6 +98,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [theme, setTheme] = useState<Theme>('dark');
   const [debugConnections, setDebugConnections] = useState(false);
 
+  // Save states (Requirements #2, #3, #8)
+  const [saveStatus, setSaveStatus] = useState<'unsaved' | 'saving' | 'saved'>('saved');
+  const [lastSavedTime, setLastSavedTime] = useState<Date | null>(new Date());
+  const [lastSaveError, setLastSaveError] = useState<string | null>(null);
+
   // In public mode, user session is always null and login modal is disabled
   const [user] = useState<any>(null);
   const [isAuthOpen] = useState(false);
@@ -131,8 +141,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     console.log('🏁 VSM Studio: Iniciando flujo en Modo Público (Acceso Libre)...');
     console.log('🔍 VSM Studio: Verificando configuración de Supabase... Configurado:', isSupabaseConfigured);
-    
-    // Auth listeners are completely ignored in public mode to disable login overrides.
     setIsLoading(false);
   }, []);
 
@@ -147,7 +155,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     console.log('📂 VSM Studio: Iniciando carga de proyectos locales...');
     setIsLoading(true);
     try {
-      // In public mode, we load local storage projects by default (simulating Draw.io)
       const data = await db.getProjects();
       console.log(`📂 VSM Studio: Proyectos locales cargados con éxito (${data.length} encontrados).`);
       setProjects(data);
@@ -184,6 +191,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           setEdgesState(newProj.edges);
           setHistory([{ nodes: newProj.nodes, edges: newProj.edges }]);
           setHistoryIndex(0);
+          setSaveStatus('saved');
+          setLastSavedTime(new Date());
+          setLastSaveError(null);
           console.log('🗺️ VSM Studio: Diagrama compartido cargado exitosamente.');
           setIsLoading(false);
           return;
@@ -244,6 +254,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setSelectedElement(null);
         isInitialLoadRef.current = true;
         
+        // Reset Save Status (Requirement #4)
+        setSaveStatus('saved');
+        setLastSavedTime(project.updated_at ? new Date(project.updated_at) : new Date());
+        setLastSaveError(null);
+        
         await loadVersions(project.id);
       } else {
         throw new Error('Proyecto no encontrado.');
@@ -258,6 +273,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setEdgesState(localP.edges || []);
         setHistory([{ nodes: localP.nodes || [], edges: localP.edges || [] }]);
         setHistoryIndex(0);
+        setSaveStatus('saved');
+        setLastSavedTime(localP.updated_at ? new Date(localP.updated_at) : new Date());
+        setLastSaveError(null);
       } else {
         alert(`Error al cargar el proyecto: ${e.message || e}`);
       }
@@ -273,10 +291,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return proj;
   };
 
-  // Save project
+  // Save project (Requirements #1, #2, #3, #8)
   const saveCurrentProject = async () => {
     if (!activeProject) return;
     setIsSaving(true);
+    setSaveStatus('saving');
+    setLastSaveError(null);
     try {
       const updated: VsmProject = {
         ...activeProject,
@@ -286,8 +306,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const saved = await db.saveProject(updated);
       setActiveProject(saved);
       setProjects(prev => prev.map(p => p.id === saved.id ? saved : p));
-    } catch (e) {
+      setSaveStatus('saved');
+      setLastSavedTime(new Date());
+      setLastSaveError(null);
+    } catch (e: any) {
       console.error('Failed to save project:', e);
+      setSaveStatus('unsaved');
+      setLastSaveError(e.message || String(e));
     } finally {
       setIsSaving(false);
     }
@@ -367,6 +392,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setEdgesState(version.edges || []);
     recordHistoryState(version.nodes, version.edges);
     setSelectedElement(null);
+    setSaveStatus('unsaved');
 
     await db.saveProject({
       ...activeProject,
@@ -377,7 +403,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await saveNewVersion(`Restauración: ${version.name}`, 'Restauración');
   };
 
-  // Autosave trigger on changes
+  // Autosave trigger on changes (Requirements #1, #3)
   useEffect(() => {
     if (!activeProject) return;
     if (isInitialLoadRef.current) {
@@ -418,6 +444,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [nodes, edges, history, historyIndex]);
 
   const setNodes = useCallback((newNodes: React.SetStateAction<Node[]>) => {
+    setSaveStatus('unsaved');
     setNodesState(prev => {
       const computed = typeof newNodes === 'function' ? newNodes(prev) : newNodes;
       setTimeout(() => recordHistoryState(computed, undefined), 0);
@@ -426,6 +453,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [recordHistoryState]);
 
   const setEdges = useCallback((newEdges: React.SetStateAction<Edge[]>) => {
+    setSaveStatus('unsaved');
     setEdgesState(prev => {
       const computed = typeof newEdges === 'function' ? newEdges(prev) : newEdges;
       setTimeout(() => recordHistoryState(undefined, computed), 0);
@@ -434,6 +462,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [recordHistoryState]);
 
   const onNodesChange: OnNodesChange = useCallback((changes: NodeChange[]) => {
+    const hasMeaningfulChange = changes.some(c => c.type !== 'select');
+    if (hasMeaningfulChange) {
+      setSaveStatus('unsaved');
+    }
     setNodesState(prev => {
       const next = applyNodeChanges(changes, prev);
       
@@ -451,6 +483,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const onEdgesChange: OnEdgesChange = useCallback((changes: EdgeChange[]) => {
+    const hasMeaningfulChange = changes.some(c => c.type !== 'select');
+    if (hasMeaningfulChange) {
+      setSaveStatus('unsaved');
+    }
     setEdgesState(prev => {
       const next = applyEdgeChanges(changes, prev);
       
@@ -468,6 +504,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const onConnect = useCallback((connection: Connection) => {
+    setSaveStatus('unsaved');
     setEdgesState(prev => {
       const newEdge = { 
         ...connection, 
@@ -485,6 +522,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [recordHistoryState]);
 
   const updateNodeData = useCallback((nodeId: string, data: any) => {
+    setSaveStatus('unsaved');
     setNodesState(prev => {
       const next = prev.map(n => {
         if (n.id === nodeId) {
@@ -508,6 +546,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [selectedElement, recordHistoryState]);
 
   const updateEdgeData = useCallback((edgeId: string, data: any) => {
+    setSaveStatus('unsaved');
     setEdgesState(prev => {
       const next = prev.map(e => {
         if (e.id === edgeId) {
@@ -539,6 +578,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setEdgesState(prevEdges);
       setHistoryIndex(nextIndex);
       setSelectedElement(null);
+      setSaveStatus('unsaved');
     }
   };
 
@@ -550,6 +590,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setEdgesState(nextEdges);
       setHistoryIndex(nextIndex);
       setSelectedElement(null);
+      setSaveStatus('unsaved');
     }
   };
 
@@ -571,6 +612,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       selectedElement,
       theme,
       versions,
+      
+      // Save Status Properties (Requirements #2, #3, #8)
+      saveStatus,
+      lastSavedTime,
+      lastSaveError,
       
       // Auth state
       user,

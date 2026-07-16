@@ -18,7 +18,8 @@ import {
   Copy,
   AlertTriangle,
   Info,
-  CloudLightning
+  CloudLightning,
+  Database
 } from 'lucide-react';
 import { exportToPng, exportToJpg, exportToJson, exportToPdf } from '../../utils/exportUtils';
 import { parseTimeToSeconds } from './TimelinePanel';
@@ -47,13 +48,45 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
     setNodes,
     edges,
     isSupabaseConfigured,
-    loadVersions
+    loadVersions,
+    saveStatus,
+    lastSavedTime,
+    lastSaveError,
+    saveCurrentProject
   } = useProject();
 
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
   const [versionDropdownOpen, setVersionDropdownOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [diagnosticOpen, setDiagnosticOpen] = useState(false);
+  const [saveDiagnosticOpen, setSaveDiagnosticOpen] = useState(false);
+  const [relativeSavedText, setRelativeSavedText] = useState('hace instantes');
+
+  const handleManualSave = async () => {
+    await saveCurrentProject();
+  };
+
+  useEffect(() => {
+    const updateTime = () => {
+      if (!lastSavedTime) {
+        setRelativeSavedText('Nunca');
+        return;
+      }
+      const diffMs = new Date().getTime() - lastSavedTime.getTime();
+      const diffSec = Math.floor(diffMs / 1000);
+      if (diffSec < 10) {
+        setRelativeSavedText('hace instantes');
+      } else if (diffSec < 60) {
+        setRelativeSavedText(`hace ${diffSec}s`);
+      } else {
+        const diffMin = Math.floor(diffSec / 60);
+        setRelativeSavedText(`hace ${diffMin} min`);
+      }
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 5000);
+    return () => clearInterval(interval);
+  }, [lastSavedTime]);
 
   // Rename states
   const [editedName, setEditedName] = useState('');
@@ -504,6 +537,41 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
 
       {/* 3. Right Side: Settings, Export, Versions, Theme, Auth User */}
       <div className="flex items-center gap-2.5">
+        {/* Manual Save Button & Status Widget (Requirements #2, #3) */}
+        <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1 select-none font-sans shrink-0">
+          <span className="flex h-2 w-2 relative shrink-0 ml-0.5">
+            {saveStatus === 'saving' && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+            )}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${
+              saveStatus === 'saved' ? 'bg-emerald-500' :
+              saveStatus === 'saving' ? 'bg-yellow-500' : 'bg-red-500'
+            }`} />
+          </span>
+          
+          <div className="flex flex-col text-left shrink-0 max-w-[80px] leading-tight select-none">
+            <span className="text-[8.5px] font-black uppercase text-slate-500 dark:text-slate-400 leading-none">
+              {saveStatus === 'saved' ? 'Guardado' :
+               saveStatus === 'saving' ? 'Guardando...' : 'Sin Guardar'}
+            </span>
+            {lastSavedTime && (
+              <span className="text-[7.5px] text-slate-400 leading-none mt-0.5 whitespace-nowrap">
+                {relativeSavedText}
+              </span>
+            )}
+          </div>
+
+          <div className="w-px h-4.5 bg-slate-200 dark:bg-slate-800 mx-0.5" />
+
+          <button
+            onClick={handleManualSave}
+            disabled={saveStatus === 'saving'}
+            className="flex items-center justify-center p-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded text-[11px] leading-none transition-all active:scale-95 disabled:opacity-50 cursor-pointer font-bold select-none h-5 px-1.5"
+            title="Guardar en base de datos"
+          >
+            💾 Guardar
+          </button>
+        </div>
         {/* Toggle Metrics Dashboard Overlay */}
         <button
           onClick={onToggleDashboard}
@@ -717,6 +785,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
           )}
         </div>
 
+        {/* Save diagnostic button */}
+        <button
+          onClick={() => setSaveDiagnosticOpen(true)}
+          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-550 dark:text-slate-400 transition-colors cursor-pointer"
+          title="Diagnóstico de Guardado"
+        >
+          <Database size={15} className="text-blue-500" />
+        </button>
+
         {/* Settings button */}
         <button
           onClick={() => setSettingsOpen(true)}
@@ -794,6 +871,74 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
               >
                 <Check size={13} />
                 <span>Aplicar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DIAGNÓSTICO DE GUARDADO MODAL (Requirement #8) */}
+      {saveDiagnosticOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-[420px] rounded-xl shadow-2xl p-5 select-none text-slate-850 dark:text-slate-200 font-sans">
+            <h3 className="text-sm font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3.5 flex items-center gap-1.5">
+              <Database size={16} className="text-blue-500" />
+              <span>Diagnóstico de Guardado</span>
+            </h3>
+
+            <div className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-x-2 gap-y-2 bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-200 dark:border-slate-800 font-mono text-[11px]">
+                <div>ID del Proyecto:</div>
+                <div className="font-bold text-slate-800 dark:text-slate-200 truncate" title={activeProject?.id || 'Sin ID'}>
+                  {activeProject?.id || 'N/A'}
+                </div>
+                
+                <div>Último Guardado:</div>
+                <div className="font-bold text-slate-800 dark:text-slate-200">
+                  {lastSavedTime ? lastSavedTime.toLocaleString('es-ES') : 'Nunca'}
+                </div>
+                
+                <div>Nodos Guardados:</div>
+                <div className="font-bold text-blue-600 dark:text-blue-400">
+                  {nodes.length}
+                </div>
+                
+                <div>Conexiones Guardadas:</div>
+                <div className="font-bold text-purple-600 dark:text-purple-400">
+                  {edges.length}
+                </div>
+
+                <div className="col-span-2 border-t border-slate-200 dark:border-slate-800/80 my-1 pt-1 text-[10px] text-slate-400 font-sans font-bold">
+                  CONECTIVIDAD SUPABASE
+                </div>
+
+                <div>Resultado Escritura:</div>
+                <div className={`font-bold ${lastSaveError ? 'text-red-500' : 'text-emerald-500'}`}>
+                  {lastSaveError ? 'Fallo' : 'Exitoso'}
+                </div>
+              </div>
+
+              {lastSaveError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 dark:text-red-400 rounded-lg text-[10px] font-mono whitespace-pre-wrap max-h-24 overflow-y-auto">
+                  <strong>Detalle del error:</strong><br />
+                  {lastSaveError}
+                </div>
+              )}
+
+              {!lastSaveError && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 dark:text-emerald-400 rounded-lg text-[10px] flex items-center gap-1.5">
+                  <Check size={14} className="shrink-0" />
+                  <span>Los datos están sincronizados correctamente en la nube.</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                onClick={() => setSaveDiagnosticOpen(false)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer"
+              >
+                Cerrar
               </button>
             </div>
           </div>

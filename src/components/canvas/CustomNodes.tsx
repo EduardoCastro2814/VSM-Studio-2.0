@@ -552,3 +552,85 @@ export const WaypointNode: React.FC<NodeProps> = ({ selected }) => {
     </div>
   );
 };
+
+// 9. Warehouse Node (Lean Almacén)
+export const WarehouseNode: React.FC<NodeProps> = ({ id, data, selected }) => {
+  const { updateNodeData } = useProject();
+  const nodeData = data as any;
+  const label = String(nodeData.label || 'Almacén');
+
+  return (
+    <div className="flex flex-col items-center justify-center relative cursor-pointer select-none w-full h-full p-2 bg-slate-100 dark:bg-slate-900/60 rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm transition-all">
+      {selected && <NodeResizer minWidth={80} minHeight={80} color="#2563eb" />}
+      
+      <svg 
+        viewBox="0 0 100 100" 
+        className="w-12 h-12 text-slate-600 dark:text-slate-400 mb-1 shrink-0"
+        fill="none" 
+        stroke="currentColor" 
+        strokeWidth="3.5"
+        strokeLinecap="round" 
+        strokeLinejoin="round"
+      >
+        <path d="M10 90V40L35 25L60 40L85 25V90H10Z" fill="currentColor" fillOpacity="0.1" />
+        <rect x="25" y="60" width="20" height="30" rx="1" fill="currentColor" fillOpacity="0.2" />
+        <rect x="55" y="65" width="20" height="25" rx="1" fill="currentColor" fillOpacity="0.2" />
+        <line x1="25" y1="70" x2="45" y2="70" />
+        <line x1="25" y1="80" x2="45" y2="80" />
+        <line x1="55" y1="75" x2="75" y2="75" />
+      </svg>
+
+      <div className="text-center w-full px-1 overflow-hidden">
+        <InlineEditableLabel 
+          value={label} 
+          onSave={(val) => updateNodeData(id, { label: val })}
+          className="font-bold text-[10px] text-slate-800 dark:text-slate-100"
+        />
+      </div>
+
+      <NodeHandles />
+    </div>
+  );
+};
+
+// 10. Kaizen Implemented Node (Lean Kaizen Cerrado - Green Burst)
+export const KaizenImplementedNode: React.FC<NodeProps> = ({ id, data, selected }) => {
+  const { updateNodeData } = useProject();
+  const nodeData = data as any;
+  const label = String(nodeData.label || 'Kaizen Imp');
+  
+  const customBg = nodeData.bgColor || '#22c55e'; // Green
+  const customBorder = nodeData.borderColor || '#15803d'; // Dark Green
+
+  return (
+    <div className="flex items-center justify-center relative cursor-pointer select-none w-full h-full">
+      {selected && <NodeResizer minWidth={80} minHeight={80} color="#22c55e" />}
+      
+      <svg 
+        viewBox="0 0 100 100" 
+        className="w-full h-full transition-all"
+        style={{ filter: selected ? 'drop-shadow(0 0 8px rgba(34,197,94,0.7))' : 'drop-shadow(0 0 4px rgba(34,197,94,0.5))' }}
+      >
+        <polygon 
+          points="50,5 60,25 80,20 72,40 95,50 72,60 80,80 60,75 50,95 40,75 20,80 28,60 5,50 28,40 20,20 40,25"
+          className="fill-green-500 stroke-green-700"
+          style={{ fill: customBg, stroke: customBorder, strokeWidth: selected ? 4 : 3 }}
+        />
+        <foreignObject x="18" y="20" width="64" height="60">
+          <div className="w-full h-full flex flex-col items-center justify-center text-center p-0.5 overflow-hidden text-white leading-tight">
+            <svg className="w-3.5 h-3.5 text-white mb-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <InlineEditableLabel 
+              value={label} 
+              onSave={(val) => updateNodeData(id, { label: val })}
+              className="font-black text-[9px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+            />
+          </div>
+        </foreignObject>
+      </svg>
+      
+      <NodeHandles />
+    </div>
+  );
+};

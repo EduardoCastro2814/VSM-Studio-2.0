@@ -19,7 +19,9 @@ import {
   TransportNode, 
   InformationNode, 
   AuxiliaryNode,
-  WaypointNode
+  WaypointNode,
+  WarehouseNode,
+  KaizenImplementedNode
 } from './CustomNodes';
 import { VsmEdge, EdgeMarkers } from './CustomEdges';
 
@@ -31,7 +33,9 @@ const nodeTypes = {
   transport: TransportNode,
   information: InformationNode,
   auxiliary: AuxiliaryNode,
-  waypoint: WaypointNode
+  waypoint: WaypointNode,
+  warehouse: WarehouseNode,
+  kaizen_implemented: KaizenImplementedNode
 };
 
 const edgeTypes = {
@@ -121,6 +125,14 @@ const CanvasInner: React.FC = () => {
       } else if (type === 'kaizen') {
         nodeData = {
           label: 'Idea Kaizen'
+        };
+      } else if (type === 'warehouse') {
+        nodeData = {
+          label: 'Almacén'
+        };
+      } else if (type === 'kaizen_implemented') {
+        nodeData = {
+          label: 'Kaizen Imp'
         };
       } else if (type === 'transport') {
         nodeData = {
@@ -280,6 +292,8 @@ const CanvasInner: React.FC = () => {
             if (n.type === 'process') return '#10b981';
             if (n.type === 'inventory') return '#f59e0b';
             if (n.type === 'kaizen') return '#ef4444';
+            if (n.type === 'kaizen_implemented') return '#22c55e';
+            if (n.type === 'warehouse') return '#475569';
             return '#3b82f6';
           }}
         />

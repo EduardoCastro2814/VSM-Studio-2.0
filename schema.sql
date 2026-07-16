@@ -10,12 +10,12 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 2. PROJECTS Table
+-- 2. PROJECTS Table (owner_id is optional to allow anonymous/public mode)
 CREATE TABLE IF NOT EXISTS public.projects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL DEFAULT 'Nuevo Proyecto VSM',
     description TEXT DEFAULT '',
-    owner_id UUID NOT NULL DEFAULT auth.uid() REFERENCES public.profiles(id) ON DELETE CASCADE,
+    owner_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -59,27 +59,19 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
-CREATE OR REPLACE TRIGGER update_projects_updated_at
-    BEFORE UPDATE ON public.projects
-    FOR EACH ROW
-    EXECUTE FUNCTION public.update_updated_at_column();
+CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON public.projects FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+CREATE TRIGGER update_vsm_maps_updated_at BEFORE UPDATE ON public.vsm_maps FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
-CREATE OR REPLACE TRIGGER update_vsm_maps_updated_at
-    BEFORE UPDATE ON public.vsm_maps
-    FOR EACH ROW
-    EXECUTE FUNCTION public.update_updated_at_column();
-
--- Auth user trigger to automatically create profiles
+-- Profiles sync trigger
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO public.profiles (id, email)
-    VALUES (NEW.id, NEW.email)
-    ON CONFLICT (id) DO NOTHING;
-    RETURN NEW;
+  INSERT INTO public.profiles (id, email)
+  VALUES (new.id, new.email);
+  RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ language 'plpgsql' security definer;
 
 CREATE OR REPLACE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();

@@ -19,7 +19,9 @@ import {
   Ship,
   Plane,
   Anchor,
-  Layers
+  Layers,
+  Warehouse,
+  Check
 } from 'lucide-react';
 
 interface SymbolItemProps {
@@ -134,6 +136,12 @@ export const SidebarLeft: React.FC = () => {
             icon={<ArrowRightLeft size={13} />} 
             details={{ isFifo: true }}
           />
+          <SymbolItem 
+            type="warehouse" 
+            label="Almacén" 
+            bgColor="bg-slate-600" 
+            icon={<Warehouse size={13} />} 
+          />
         </div>
       )}
 
@@ -234,6 +242,12 @@ export const SidebarLeft: React.FC = () => {
             label="Kaizen Burst" 
             bgColor="bg-red-500" 
             icon={<Play size={13} className="rotate-90 fill-current" />} 
+          />
+          <SymbolItem 
+            type="kaizen_implemented" 
+            label="Kaizen Implementado" 
+            bgColor="bg-green-500" 
+            icon={<Check size={13} className="fill-current" />} 
           />
           <SymbolItem 
             type="auxiliary" 
