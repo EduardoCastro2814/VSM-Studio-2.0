@@ -66,7 +66,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const handleManualSave = async () => {
-    await saveCurrentProject();
+    try {
+      await saveCurrentProject();
+      alert('✅ Guardado exitoso: VSM guardado correctamente en Supabase.');
+    } catch (err: any) {
+      alert(`❌ Error de guardado:\n${err.message || String(err)}`);
+    }
   };
 
   const handleTestSave = async () => {

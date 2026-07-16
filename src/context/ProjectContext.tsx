@@ -313,6 +313,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.error('Failed to save project:', e);
       setSaveStatus('unsaved');
       setLastSaveError(e.message || String(e));
+      throw e;
     } finally {
       setIsSaving(false);
     }
@@ -416,7 +417,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     saveTimeoutRef.current = setTimeout(() => {
-      saveCurrentProject();
+      saveCurrentProject().catch(() => {});
     }, 1500);
 
     return () => {
