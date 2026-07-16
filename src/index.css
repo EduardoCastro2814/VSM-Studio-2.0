@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@theme {
+  --color-vsm-blue: #2563EB;
+  --color-vsm-dark: #1F2937;
+  --color-vsm-green: #10B981;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 transition-colors duration-200;
+    margin: 0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  
+  body.dark {
+    @apply bg-slate-950 text-slate-100;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-700 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-600;
+}
+
+/* React Flow custom styles */
+.react-flow__renderer {
+  background-color: var(--bg-color);
+}
+
+.react-flow__node {
+  border-radius: 6px;
+}
+
+.react-flow__handle.vsm-handle {
+  width: 8px !important;
+  height: 8px !important;
+  background: #2563eb !important;
+  border: 1.5px solid white !important;
+  border-radius: 50% !important;
+  opacity: 0;
+  pointer-events: all;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.react-flow__node:hover .vsm-handle,
+.react-flow__node.selected .vsm-handle {
+  opacity: 1;
+}
+
+.react-flow__handle.vsm-handle:hover {
+  transform: scale(1.3) !important;
+  background: #1d4ed8 !important;
+}
+
+.react-flow__edges {
+  z-index: 5 !important;
+}
+
+.react-flow__edge-path {
+  stroke-width: 2.5;
+  transition: stroke 0.15s ease, stroke-width 0.15s ease;
+  pointer-events: visibleStroke !important;
+}
+
+/* Timeline stairs layout styling */
+.timeline-stairs {
+  position: relative;
+  display: flex;
+}
+
+.timeline-step {
+  position: relative;
+  min-width: 140px;
+  flex: 1;
+}
+
+/* Kaizen burst animation */
+@keyframes pulse-burst {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 2px rgba(239, 68, 68, 0.4));
+  }
+  50% {
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.8));
+  }
+}
+
+.animate-kaizen {
+  animation: pulse-burst 2s infinite ease-in-out;
+}
