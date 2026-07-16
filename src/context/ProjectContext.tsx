@@ -35,6 +35,8 @@ interface ProjectContextProps {
   user: any | null;
   signOut: () => Promise<void>;
   isSupabaseConfigured: boolean;
+  isAuthOpen: boolean;
+  setIsAuthOpen: (val: boolean) => void;
   
   // Projects Actions
   loadProjects: () => Promise<void>;
@@ -88,8 +90,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [theme, setTheme] = useState<Theme>('dark');
   const [debugConnections, setDebugConnections] = useState(false);
 
-  // Auth state
+  // Auth & login modal state
   const [user, setUser] = useState<any>(null);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
 
   // History State
   const [history, setHistory] = useState<HistoryState[]>([]);
@@ -110,45 +113,104 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [theme]);
 
+  // Loading safety timeout: maximum 10 seconds to prevent infinite lockups
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => {
+        console.warn('⚠️ VSM Studio: Se alcanzó el tiempo de espera máximo de carga (10s). Desactivando cargador.');
+        setIsLoading(false);
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading]);
+
+  // Close login modal automatically on successful session loading
+  useEffect(() => {
+    if (user) {
+      setIsAuthOpen(false);
+    }
+  }, [user]);
+
   // Monitor Supabase session states
   useEffect(() => {
+    console.log('🏁 VSM Studio: Iniciando flujo de carga de la aplicación...');
+    console.log('🔍 VSM Studio: Verificando configuración de Supabase... Configurado:', isSupabaseConfigured);
+
     if (isSupabaseConfigured && supabase) {
       // Fetch initial session
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setUser(session?.user ?? null);
+      supabase.auth.getSession().then(({ data: { session }, error }) => {
+        if (error) {
+          console.error('❌ VSM Studio: Fallo al verificar sesión inicial:', error.message);
+        }
+        const activeUser = session?.user ?? null;
+        console.log('👤 VSM Studio: Carga de usuario/sesión inicial completada - Usuario:', activeUser ? activeUser.email : 'No autenticado');
+        setUser(activeUser);
       });
 
       // Listen for auth changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user ?? null);
+        const activeUser = session?.user ?? null;
+        console.log('👤 VSM Studio: Cambio de estado Auth detectado - Usuario:', activeUser ? activeUser.email : 'Sesión cerrada');
+        setUser(activeUser);
       });
 
       return () => {
         subscription.unsubscribe();
       };
     } else {
+      console.log('👤 VSM Studio: Supabase no configurado. Utilizando modo local.');
       setIsLoading(false);
     }
   }, []);
 
   // Load all projects on initial mount / user state change
   const loadProjects = useCallback(async () => {
+    console.log('📂 VSM Studio: Iniciando carga de proyectos desde el backend...');
     setIsLoading(true);
     try {
       const data = await db.getProjects();
+      console.log(`📂 VSM Studio: Proyectos cargados con éxito (${data.length} encontrados).`);
       setProjects(data);
       
       // Load last active project, or create one if empty
       if (data.length > 0) {
+        console.log(`🗺️ VSM Studio: Cargando el proyecto activo por defecto: ${data[0].name}`);
         await loadProject(data[0].id);
       } else {
-        const defaultProj = await createNewProject('Mi Primer VSM', user?.email || 'Lean Expert');
-        await loadProject(defaultProj.id);
+        console.log('🗺️ VSM Studio: No se encontraron proyectos. Intentando crear proyecto por defecto...');
+        try {
+          const defaultProj = await createNewProject('Mi Primer VSM', user?.email || 'Lean Expert');
+          console.log('🗺️ VSM Studio: Proyecto por defecto creado con éxito:', defaultProj.name);
+          await loadProject(defaultProj.id);
+        } catch (createErr: any) {
+          console.error('❌ VSM Studio: Error SQL o RLS al crear proyecto por defecto en Supabase:', createErr);
+          
+          // FALLBACK: Create in-memory local temporary project to avoid blocking the app
+          console.log('⚠️ VSM Studio: Activando fallback de proyecto temporal en memoria.');
+          const tempProj = {
+            id: 'temp-project-id',
+            name: 'Proyecto Temporal (Sin conexión)',
+            author: user?.email || 'Lean Expert',
+            nodes: [],
+            edges: [],
+            viewport: { x: 0, y: 0, zoom: 1 },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          setProjects([tempProj]);
+          setActiveProject(tempProj);
+          setNodesState([]);
+          setEdgesState([]);
+        }
       }
-    } catch (e) {
-      console.error('Failed to load projects:', e);
+    } catch (e: any) {
+      console.error('❌ VSM Studio: Error crítico al cargar proyectos:', e.message || e);
+      alert(`Error al inicializar proyectos: ${e.message || e}`);
+      setProjects([]);
+      setActiveProject(null);
     } finally {
       setIsLoading(false);
+      console.log('✨ VSM Studio: Fin de inicialización de proyectos. Interfaz lista.');
     }
   }, [user]);
 
@@ -157,11 +219,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!isSupabaseConfigured || user) {
       loadProjects();
     } else {
+      console.log('👤 VSM Studio: Cargando proyectos en modo local.');
       setProjects([]);
       setActiveProject(null);
       setNodesState([]);
       setEdgesState([]);
       setVersions([]);
+      // Settle the loading state for unauthenticated Supabase mode (Requirement #6)
+      setIsLoading(false);
     }
   }, [user, loadProjects]);
 
@@ -176,8 +241,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const loadProject = async (id: string) => {
     setIsLoading(true);
     try {
+      console.log(`📂 VSM Studio: Solicitando carga de proyecto específico ID: ${id}`);
       const project = await db.getProject(id);
       if (project) {
+        console.log(`🗺️ VSM Studio: Carga de mapa asociada a proyecto '${project.name}' completada.`);
         setActiveProject(project);
         setNodesState(project.nodes || []);
         setEdgesState(project.edges || []);
@@ -189,9 +256,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         isInitialLoadRef.current = true;
         
         await loadVersions(project.id);
+      } else {
+        throw new Error('Proyecto no encontrado.');
       }
-    } catch (e) {
-      console.error(`Failed to load project ${id}:`, e);
+    } catch (e: any) {
+      console.error(`❌ VSM Studio: Error al cargar el proyecto ${id}:`, e.message || e);
+      alert(`Error al cargar el proyecto: ${e.message || e}`);
+      setNodesState([]);
+      setEdgesState([]);
     } finally {
       setIsLoading(false);
     }
@@ -216,7 +288,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       };
       const saved = await db.saveProject(updated);
       setActiveProject(saved);
-      // Update projects list
       setProjects(prev => prev.map(p => p.id === saved.id ? saved : p));
     } catch (e) {
       console.error('Failed to save project:', e);
@@ -301,14 +372,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     recordHistoryState(version.nodes, version.edges);
     setSelectedElement(null);
 
-    // Save restored state to database
     await db.saveProject({
       ...activeProject,
       nodes: version.nodes || [],
       edges: version.edges || [],
     });
 
-    // Insert restoration version in log
     await saveNewVersion(`Restauración: ${version.name}`, 'Restauración');
   };
 
@@ -340,20 +409,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     
     const nextHistory = history.slice(0, historyIndex + 1);
     
-    // Add to stack if different from current
     const lastState = nextHistory[nextHistory.length - 1];
     if (
       !lastState ||
       JSON.stringify(lastState.nodes) !== JSON.stringify(nextNodes) ||
       JSON.stringify(lastState.edges) !== JSON.stringify(nextEdges)
     ) {
-      const updatedHistory = [...nextHistory, { nodes: nextNodes, edges: nextEdges }].slice(-30); // limit to 30 undos
+      const updatedHistory = [...nextHistory, { nodes: nextNodes, edges: nextEdges }].slice(-30);
       setHistory(updatedHistory);
       setHistoryIndex(updatedHistory.length - 1);
     }
   }, [nodes, edges, history, historyIndex]);
 
-  // Set Nodes wrapper to auto-record history
   const setNodes = useCallback((newNodes: React.SetStateAction<Node[]>) => {
     setNodesState(prev => {
       const computed = typeof newNodes === 'function' ? newNodes(prev) : newNodes;
@@ -362,7 +429,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, [recordHistoryState]);
 
-  // Set Edges wrapper to auto-record history
   const setEdges = useCallback((newEdges: React.SetStateAction<Edge[]>) => {
     setEdgesState(prev => {
       const computed = typeof newEdges === 'function' ? newEdges(prev) : newEdges;
@@ -371,7 +437,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, [recordHistoryState]);
 
-  // React Flow Handlers
   const onNodesChange: OnNodesChange = useCallback((changes: NodeChange[]) => {
     setNodesState(prev => {
       const next = applyNodeChanges(changes, prev);
@@ -423,7 +488,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, [recordHistoryState]);
 
-  // Custom node/edge properties updater
   const updateNodeData = useCallback((nodeId: string, data: any) => {
     setNodesState(prev => {
       const next = prev.map(n => {
@@ -471,7 +535,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, [selectedElement, recordHistoryState]);
 
-  // Undo / Redo Handlers
   const undo = () => {
     if (historyIndex > 0) {
       const nextIndex = historyIndex - 1;
@@ -517,6 +580,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       user,
       signOut,
       isSupabaseConfigured,
+      isAuthOpen,
+      setIsAuthOpen,
       
       loadProjects,
       loadProject,

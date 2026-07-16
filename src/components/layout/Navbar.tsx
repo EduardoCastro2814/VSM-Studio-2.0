@@ -50,7 +50,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
     user,
     signOut,
     isSupabaseConfigured,
-    loadVersions
+    loadVersions,
+    setIsAuthOpen
   } = useProject();
 
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
@@ -739,7 +740,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
         </button>
 
         {/* Logged in profile & logout */}
-        {isSupabaseConfigured && user && (
+        {isSupabaseConfigured && user ? (
           <>
             <div className="h-5 w-px bg-slate-200 dark:bg-slate-800" />
             <div className="flex items-center gap-1.5">
@@ -756,7 +757,19 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
               </button>
             </div>
           </>
-        )}
+        ) : isSupabaseConfigured ? (
+          <>
+            <div className="h-5 w-px bg-slate-200 dark:bg-slate-800" />
+            <button
+              onClick={() => setIsAuthOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer active:scale-95 shadow shadow-blue-500/10"
+              title="Conectarse a Supabase"
+            >
+              <User size={13} />
+              <span>Conectar</span>
+            </button>
+          </>
+        ) : null}
       </div>
 
       {/* Settings Modal */}

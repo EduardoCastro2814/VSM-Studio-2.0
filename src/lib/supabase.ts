@@ -99,7 +99,7 @@ export const db = {
             };
           });
         }
-        console.warn('Supabase fetch failed, falling back to LocalStorage', error);
+        console.error('❌ Supabase: Error SQL o RLS al obtener proyectos:', error.message || error);
       }
     }
     return getLocalProjects().sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
@@ -126,7 +126,7 @@ export const db = {
           updated_at: data.updated_at
         };
       }
-      console.warn('Supabase fetch failed for project, falling back to LocalStorage', error);
+      console.error('❌ Supabase: Error SQL o RLS al obtener el proyecto:', error.message || error);
     }
     return getLocalProjects().find(p => p.id === id) || null;
   },
@@ -183,9 +183,9 @@ export const db = {
               updated_at: projData.updated_at
             };
           }
-          console.warn('Supabase map creation failed:', mapError);
+          console.error('❌ Supabase: Error SQL o RLS al crear el mapa:', mapError?.message || mapError || 'Error desconocido');
         } else {
-          console.warn('Supabase project insertion failed:', projError);
+          console.error('❌ Supabase: Error SQL o RLS al crear el proyecto:', projError?.message || projError || 'Error desconocido');
         }
       }
     }
@@ -229,9 +229,9 @@ export const db = {
         if (!mapError) {
           return updatedProject;
         }
-        console.warn('Supabase map update failed:', mapError);
+        console.error('❌ Supabase: Error SQL o RLS al actualizar el mapa:', mapError.message || mapError);
       } else {
-        console.warn('Supabase project update failed:', projError);
+        console.error('❌ Supabase: Error SQL o RLS al actualizar el proyecto:', projError.message || projError);
       }
     }
 
@@ -253,7 +253,7 @@ export const db = {
         .delete()
         .eq('id', id);
       if (!error) return true;
-      console.warn('Supabase delete failed, using LocalStorage', error);
+      console.error('❌ Supabase: Error SQL o RLS al eliminar el proyecto:', error.message || error);
     }
 
     const projects = getLocalProjects();
@@ -308,7 +308,7 @@ export const db = {
             created_by_email: user?.email || 'Sistema'
           };
         }
-        console.warn('Supabase version save failed, using LocalStorage', error);
+        console.error('❌ Supabase: Error SQL o RLS al guardar la versión:', error?.message || error || 'Error desconocido');
       }
     }
 
@@ -356,7 +356,7 @@ export const db = {
             created_by_email: v.profiles?.email || 'Sistema'
           }));
         }
-        console.warn('Supabase version fetch failed, using LocalStorage', error);
+        console.error('❌ Supabase: Error SQL o RLS al obtener versiones:', error.message || error);
       }
     }
 
