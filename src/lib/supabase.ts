@@ -5,9 +5,28 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 // Initialize Supabase if keys are provided
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+
+// Diagnostic console logs
+console.group('=== VSM STUDIO DIAGNÓSTICO SUPABASE ===');
+console.log('VITE_SUPABASE_URL disponible:', Boolean(supabaseUrl), supabaseUrl ? `(URL: ${supabaseUrl.substring(0, 15)}...)` : '(Faltante)');
+console.log('VITE_SUPABASE_ANON_KEY disponible:', Boolean(supabaseAnonKey), supabaseAnonKey ? '(Definida)' : '(Faltante)');
+console.log('Supabase configurado para backend:', isSupabaseConfigured);
+console.groupEnd();
+
 export const supabase = isSupabaseConfigured 
   ? createClient(supabaseUrl, supabaseAnonKey) 
   : null;
+
+// Async connection validation log
+if (isSupabaseConfigured && supabase) {
+  supabase.auth.getSession().then(({ data, error }) => {
+    if (error) {
+      console.error('❌ Supabase: Error de conexión a la base de datos o API:', error.message);
+    } else {
+      console.log('✅ Supabase: Conexión establecida exitosamente. Sesión de usuario activa:', Boolean(data.session));
+    }
+  });
+}
 
 export interface VsmProject {
   id: string;
