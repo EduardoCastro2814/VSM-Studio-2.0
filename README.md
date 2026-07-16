@@ -83,10 +83,10 @@ Abre tu navegador en [http://localhost:5173/](http://localhost:5173/) para usar 
    git add .
    git commit -m "Initial commit - VSM Studio con soporte para Supabase y GitHub Pages"
    ```
-3. Crea un repositorio vacío en tu cuenta de GitHub con el nombre `vsm-studio`.
+3. Crea un repositorio vacío en tu cuenta de GitHub con el nombre `VSM-Studio-2.0`.
 4. Vincula tu repositorio local con el remoto de GitHub y sube los archivos:
    ```bash
-   git remote add origin https://github.com/TU_USUARIO/vsm-studio.git
+   git remote add origin https://github.com/eduardocastro2814/VSM-Studio-2.0.git
    git branch -M main
    git push -u origin main
    ```
@@ -95,13 +95,24 @@ Abre tu navegador en [http://localhost:5173/](http://localhost:5173/) para usar 
 
 ## 🖥️ Publicación en GitHub Pages
 
-La aplicación detecta automáticamente si se está compilando en entornos de producción (como los servidores de GitHub Actions) y reescribe la ruta de acceso de los recursos usando la subruta `/vsm-studio/`.
+La aplicación detecta automáticamente si se está compilando en entornos de producción (como los servidores de GitHub Actions) y reescribe la ruta de acceso de los recursos usando la subruta `/VSM-Studio-2.0/`.
 
-Para desplegarlo de forma sencilla y automatizada:
+Dispones de dos métodos de publicación:
 
-### Método Recomendado: Despliegue con GitHub Actions (CI/CD)
+### Método 1: Despliegue Manual con una sola línea de comando (Recomendado)
 
-Crea el archivo `.github/workflows/deploy.yml` con el siguiente contenido:
+Una vez que hayas vinculado tu proyecto a tu repositorio remoto de GitHub, puedes compilar y publicar tu aplicación en GitHub Pages ejecutando:
+
+```bash
+npm run deploy
+```
+
+Este comando ejecutará automáticamente `predeploy` (que compilará tu aplicación en la carpeta `/dist/`) y luego utilizará `gh-pages` para crear la rama `gh-pages` en tu repositorio remoto y subir los archivos de compilación. Tu aplicación estará disponible en segundos en:
+`https://eduardocastro2814.github.io/VSM-Studio-2.0/`
+
+### Método 2: Despliegue Automatizado con GitHub Actions (CI/CD)
+
+Crea el archivo `.github/workflows/deploy.yml` en tu repositorio con el siguiente contenido:
 
 ```yaml
 name: Deploy to GitHub Pages
@@ -157,13 +168,13 @@ jobs:
         uses: actions/deploy-pages@v4
 ```
 
-### Configuración en la interfaz de GitHub:
+### Configuración en la interfaz de GitHub para CI/CD:
 1. En tu repositorio de GitHub, ve a **Settings > Secrets and variables > Actions** y añade las siguientes dos variables secretas (Secrets) para que la versión compilada tenga acceso a tu Supabase en producción:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
 2. Ve a **Settings > Pages**.
-3. En la sección **Build and deployment > Source**, asegúrate de que esté configurado como **GitHub Actions**.
-4. ¡Listo! Cada commit que subas a la rama `main` iniciará el despliegue automático hacia `https://tu-usuario.github.io/vsm-studio/`.
+3. En la sección **Build and deployment > Source**, asegúrate de que esté configurado como **GitHub Actions** (si usas el flujo de Actions) o **Deploy from a branch** (seleccionando la rama `gh-pages` si usas `npm run deploy`).
+4. Tu aplicación estará disponible en: `https://eduardocastro2814.github.io/VSM-Studio-2.0/`
 
 ---
 
@@ -173,4 +184,4 @@ Antes de lanzar a producción, comprueba lo siguiente:
 - [x] Ejecutar `npm run build` localmente y verificar que compile sin errores de TypeScript o Warnings.
 - [x] Verificar que al guardar y exportar a PDF/PNG/JPG se incluyan las puntas de flecha en las líneas de flujo físicos y de información (los marcadores se inyectan automáticamente).
 - [x] Confirmar que las llamadas de subida a Supabase Storage buckets funcionen.
-- [x] Asegurarse de que el banner de "Modo de Demostración Local" desaparezca una vez que el archivo `.env` con variables esté presente.
+- [x] Asegurarse de que el banner de "Modo de Demostración Local" desaparezca once que el archivo `.env` con variables esté presente.
