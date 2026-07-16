@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { exportToPng, exportToJpg, exportToJson, exportToPdf } from '../../utils/exportUtils';
 import { parseTimeToSeconds } from './TimelinePanel';
+import { db } from '../../lib/supabase';
 
 interface NavbarProps {
   onToggleDashboard: () => void;
@@ -61,9 +62,50 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
   const [diagnosticOpen, setDiagnosticOpen] = useState(false);
   const [saveDiagnosticOpen, setSaveDiagnosticOpen] = useState(false);
   const [relativeSavedText, setRelativeSavedText] = useState('hace instantes');
+  const [isTestingSave, setIsTestingSave] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const handleManualSave = async () => {
     await saveCurrentProject();
+  };
+
+  const handleTestSave = async () => {
+    setIsTestingSave(true);
+    setTestResult(null);
+    try {
+      if (!activeProject) {
+        throw new Error("No hay un proyecto activo para probar.");
+      }
+      
+      console.log('🧪 [TEST GUARDADO] Iniciando guardado de prueba...');
+      const testId = '00000000-0000-0000-0000-000000000000';
+      const testProj = {
+        id: testId,
+        name: 'PROYECTO DE PRUEBA VSM',
+        author: 'Diagnostic Test',
+        nodes: [{ id: 'test-node', type: 'process', position: { x: 10, y: 10 }, data: { label: 'Test' } }],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
+      await db.saveProject(testProj);
+      await db.deleteProject(testId);
+      
+      setTestResult({
+        success: true,
+        message: '✅ Guardado exitoso (Inserción, escritura y eliminación de prueba completadas en Supabase)'
+      });
+    } catch (e: any) {
+      console.error('❌ [TEST GUARDADO] Falló el guardado de prueba:', e);
+      setTestResult({
+        success: false,
+        message: `❌ Error de guardado: ${e.message || String(e)}`
+      });
+    } finally {
+      setIsTestingSave(false);
+    }
   };
 
   useEffect(() => {
@@ -931,6 +973,32 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
                   <span>Los datos están sincronizados correctamente en la nube.</span>
                 </div>
               )}
+
+              {/* Test Guardado Section */}
+              <div className="border-t border-slate-200 dark:border-slate-800/80 pt-3 mt-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
+                    Prueba de Conexión
+                  </span>
+                  <button
+                    onClick={handleTestSave}
+                    disabled={isTestingSave}
+                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded text-[10px] font-bold cursor-pointer disabled:opacity-50 transition-colors"
+                  >
+                    {isTestingSave ? 'Probando...' : '🧪 Test Guardado'}
+                  </button>
+                </div>
+                
+                {testResult && (
+                  <div className={`mt-2 p-2 rounded text-[10px] leading-relaxed font-mono ${
+                    testResult.success 
+                      ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400' 
+                      : 'bg-red-500/10 border border-red-500/20 text-red-500 dark:text-red-450'
+                  }`}>
+                    {testResult.message}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 mt-5">

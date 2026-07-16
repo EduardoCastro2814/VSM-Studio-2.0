@@ -106,29 +106,72 @@ export const db = {
   },
 
   async getProject(id: string): Promise<VsmProject | null> {
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('id, name, description, created_at, updated_at, owner_id, vsm_maps(id, name, canvas_data_json), profiles(email)')
-        .eq('id', id)
-        .single();
+    const localProjects = getLocalProjects();
+    const localP = localProjects.find(p => p.id === id);
 
-      if (!error && data) {
-        const map = data.vsm_maps?.[0];
-        return {
-          id: data.id,
-          name: data.name,
-          author: (data.profiles as any)?.email || 'Lean Expert',
-          nodes: map?.canvas_data_json?.nodes || [],
-          edges: map?.canvas_data_json?.edges || [],
-          viewport: map?.canvas_data_json?.viewport || { x: 0, y: 0, zoom: 1 },
-          created_at: data.created_at,
-          updated_at: data.updated_at
-        };
+    if (isSupabaseConfigured && supabase) {
+      try {
+        console.log(`🔍 [DIAGNÓSTICO CARGA] Consultando Supabase para proyecto ID: ${id}`);
+        const { data, error } = await supabase
+          .from('projects')
+          .select('id, name, description, created_at, updated_at, owner_id, vsm_maps(id, name, canvas_data_json), profiles(email)')
+          .eq('id', id)
+          .maybeSingle();
+
+        if (error) {
+          console.error('❌ [DIAGNÓSTICO CARGA] Error al obtener proyecto de Supabase:', error.message || error);
+          return localP || null;
+        }
+
+        if (data) {
+          const map = data.vsm_maps?.[0];
+          const supabaseProject: VsmProject = {
+            id: data.id,
+            name: data.name,
+            author: (data.profiles as any)?.email || 'Lean Expert',
+            nodes: map?.canvas_data_json?.nodes || [],
+            edges: map?.canvas_data_json?.edges || [],
+            viewport: map?.canvas_data_json?.viewport || { x: 0, y: 0, zoom: 1 },
+            created_at: data.created_at,
+            updated_at: data.updated_at
+          };
+
+          console.log(`📥 [DIAGNÓSTICO CARGA] Proyecto obtenido de Supabase. Nodos: ${supabaseProject.nodes.length}, Conexiones: ${supabaseProject.edges.length}`);
+
+          if (localP) {
+            const localTime = new Date(localP.updated_at).getTime();
+            const supabaseTime = new Date(supabaseProject.updated_at).getTime();
+            const localHasMoreData = (localP.nodes?.length || 0) > (supabaseProject.nodes?.length || 0);
+
+            if (localTime > supabaseTime || (localHasMoreData && supabaseProject.nodes?.length === 0)) {
+              console.log('🔄 [DIAGNÓSTICO CARGA] La copia local es más reciente o contiene más datos. Usando copia local y programando sincronización con Supabase en segundo plano.');
+              
+              // Background sync back to Supabase
+              this.saveProject(localP).catch(err => {
+                console.error('❌ [DIAGNÓSTICO CARGA] Falló la sincronización automática en segundo plano:', err.message || err);
+              });
+              
+              return localP;
+            }
+          }
+
+          // Update local copy
+          const index = localProjects.findIndex(p => p.id === id);
+          if (index !== -1) {
+            localProjects[index] = supabaseProject;
+          } else {
+            localProjects.push(supabaseProject);
+          }
+          saveLocalProjects(localProjects);
+          return supabaseProject;
+        }
+      } catch (err: any) {
+        console.error('❌ [DIAGNÓSTICO CARGA] Excepción durante la carga de Supabase:', err.message || err);
       }
-      console.error('❌ Supabase: Error SQL o RLS al obtener el proyecto:', error.message || error);
     }
-    return getLocalProjects().find(p => p.id === id) || null;
+
+    console.log(`💾 [DIAGNÓSTICO CARGA] Usando copia local (Supabase no disponible o vacío) para proyecto ID: ${id}`);
+    return localP || null;
   },
 
   async createProject(name: string, author = 'Anonymous'): Promise<VsmProject> {
@@ -204,39 +247,130 @@ export const db = {
       updated_at: new Date().toISOString(),
     };
 
+    console.log('💾 [DIAGNÓSTICO GUARDADO] Ejecutando guardado para proyecto ID:', updatedProject.id);
+    console.log('📦 [DIAGNÓSTICO GUARDADO] Datos a persistir:', {
+      name: updatedProject.name,
+      nodesCount: updatedProject.nodes?.length || 0,
+      edgesCount: updatedProject.edges?.length || 0,
+      viewport: updatedProject.viewport
+    });
+
     if (isSupabaseConfigured && supabase) {
-      // 1. Update project details
-      const { error: projError } = await supabase
-        .from('projects')
-        .update({
-          name: updatedProject.name,
-          updated_at: updatedProject.updated_at
-        })
-        .eq('id', updatedProject.id);
+      try {
+        // Step 1: Check project row in Supabase
+        console.log('🔍 [DIAGNÓSTICO GUARDADO] Buscando registro en tabla projects...');
+        const { data: existingProject, error: checkProjErr } = await supabase
+          .from('projects')
+          .select('id')
+          .eq('id', updatedProject.id)
+          .maybeSingle();
 
-      if (!projError) {
-        // 2. Update map canvas data
-        const { error: mapError } = await supabase
-          .from('vsm_maps')
-          .update({
-            canvas_data_json: {
-              nodes: updatedProject.nodes,
-              edges: updatedProject.edges,
-              viewport: updatedProject.viewport
-            },
-            updated_at: updatedProject.updated_at
-          })
-          .eq('project_id', updatedProject.id);
-
-        if (!mapError) {
-          return updatedProject;
+        if (checkProjErr) {
+          console.error('❌ [DIAGNÓSTICO GUARDADO] Error al buscar proyecto en Supabase:', checkProjErr.message || checkProjErr);
         }
-        console.error('❌ Supabase: Error SQL o RLS al actualizar el mapa:', mapError.message || mapError);
-      } else {
-        console.error('❌ Supabase: Error SQL o RLS al actualizar el proyecto:', projError.message || projError);
+
+        let projResult;
+        if (existingProject) {
+          console.log('🔄 [DIAGNÓSTICO GUARDADO] Proyecto encontrado. Ejecutando UPDATE...');
+          projResult = await supabase
+            .from('projects')
+            .update({
+              name: updatedProject.name,
+              updated_at: updatedProject.updated_at
+            })
+            .eq('id', updatedProject.id)
+            .select();
+          console.log('📥 [DIAGNÓSTICO GUARDADO] Resultado UPDATE proyecto:', projResult);
+        } else {
+          console.log('➕ [DIAGNÓSTICO GUARDADO] Proyecto no encontrado. Ejecutando INSERT...');
+          projResult = await supabase
+            .from('projects')
+            .insert([{
+              id: updatedProject.id,
+              name: updatedProject.name,
+              created_at: updatedProject.created_at || updatedProject.updated_at,
+              updated_at: updatedProject.updated_at
+            }])
+            .select();
+          console.log('📥 [DIAGNÓSTICO GUARDADO] Resultado INSERT proyecto:', projResult);
+        }
+
+        if (projResult.error) {
+          throw new Error(`Error en proyectos: ${projResult.error.message}`);
+        }
+
+        // Step 2: Check map row in Supabase
+        console.log('🔍 [DIAGNÓSTICO GUARDADO] Buscando registro en tabla vsm_maps...');
+        const { data: existingMap, error: checkMapErr } = await supabase
+          .from('vsm_maps')
+          .select('id')
+          .eq('project_id', updatedProject.id)
+          .maybeSingle();
+
+        if (checkMapErr) {
+          console.error('❌ [DIAGNÓSTICO GUARDADO] Error al buscar mapa en Supabase:', checkMapErr.message || checkMapErr);
+        }
+
+        let mapResult;
+        const canvasData = {
+          nodes: updatedProject.nodes || [],
+          edges: updatedProject.edges || [],
+          viewport: updatedProject.viewport || { x: 0, y: 0, zoom: 1 }
+        };
+
+        if (existingMap) {
+          console.log('🔄 [DIAGNÓSTICO GUARDADO] Mapa encontrado. Ejecutando UPDATE...');
+          mapResult = await supabase
+            .from('vsm_maps')
+            .update({
+              canvas_data_json: canvasData,
+              updated_at: updatedProject.updated_at
+            })
+            .eq('id', existingMap.id)
+            .select();
+          console.log('📥 [DIAGNÓSTICO GUARDADO] Resultado UPDATE mapa:', mapResult);
+        } else {
+          console.log('➕ [DIAGNÓSTICO GUARDADO] Mapa no encontrado. Ejecutando INSERT...');
+          mapResult = await supabase
+            .from('vsm_maps')
+            .insert([{
+              id: crypto.randomUUID(),
+              project_id: updatedProject.id,
+              name: 'Mapa Principal',
+              canvas_data_json: canvasData,
+              created_at: updatedProject.updated_at,
+              updated_at: updatedProject.updated_at
+            }])
+            .select();
+          console.log('📥 [DIAGNÓSTICO GUARDADO] Resultado INSERT mapa:', mapResult);
+        }
+
+        if (mapResult.error) {
+          throw new Error(`Error en vsm_maps: ${mapResult.error.message}`);
+        }
+
+        console.log('✅ [DIAGNÓSTICO GUARDADO] Sincronización con Supabase exitosa.');
+        
+        // Save locally to keep local copy updated
+        const projects = getLocalProjects();
+        const index = projects.findIndex(p => p.id === updatedProject.id);
+        if (index !== -1) {
+          projects[index] = updatedProject;
+        } else {
+          projects.push(updatedProject);
+        }
+        saveLocalProjects(projects);
+
+        return updatedProject;
+
+      } catch (err: any) {
+        console.error('❌ [DIAGNÓSTICO GUARDADO] Error de guardado en Supabase:', err.message || err);
+        throw err;
       }
     }
 
+    // Fallback LocalStorage if not configured
+    console.log('💾 [DIAGNÓSTICO GUARDADO] Guardando únicamente en LocalStorage (Supabase desactivado).');
     const projects = getLocalProjects();
     const index = projects.findIndex(p => p.id === updatedProject.id);
     if (index !== -1) {
