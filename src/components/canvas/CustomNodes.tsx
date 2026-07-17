@@ -283,8 +283,8 @@ export const KaizenNode: React.FC<NodeProps> = ({ id, data, selected }) => {
   const label = String(nodeData.label || 'Kaizen');
 
   // Custom styling
-  const customBg = nodeData.bgColor || '#ef4444';
-  const customBorder = nodeData.borderColor || '#f59e0b';
+  const customBg = nodeData.bgColor || '#f97316'; // Vibrant orange
+  const customBorder = nodeData.borderColor || '#ea580c'; // Dark orange
 
   return (
     <div className="flex items-center justify-center animate-kaizen relative cursor-pointer select-none w-full h-full">
@@ -293,23 +293,45 @@ export const KaizenNode: React.FC<NodeProps> = ({ id, data, selected }) => {
       <svg 
         viewBox="0 0 100 100" 
         className="w-full h-full transition-all"
-        style={{ filter: selected ? 'drop-shadow(0 0 8px rgba(37,99,235,0.7))' : 'drop-shadow(0 0 4px rgba(239,68,68,0.5))' }}
+        style={{ filter: selected ? 'drop-shadow(0 0 8px rgba(37,99,235,0.7))' : 'drop-shadow(0 0 4px rgba(249,115,22,0.5))' }}
       >
         <polygon 
           points="50,5 60,25 80,20 72,40 95,50 72,60 80,80 60,75 50,95 40,75 20,80 28,60 5,50 28,40 20,20 40,25"
-          className="fill-red-500 stroke-yellow-400"
+          className="fill-orange-500 stroke-orange-750"
           style={{ fill: customBg, stroke: customBorder, strokeWidth: selected ? 4 : 3 }}
         />
-        <foreignObject x="18" y="25" width="64" height="50">
-          <div className="w-full h-full flex items-center justify-center text-center p-0.5 overflow-hidden text-white">
-            <InlineEditableLabel 
-              value={label} 
-              onSave={(val) => updateNodeData(id, { label: val })}
-              className="font-black text-[9px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
-            />
-          </div>
-        </foreignObject>
       </svg>
+
+      {/* Overlay labels placed OUTSIDE the SVG to avoid html2canvas / html-to-image clipping */}
+      <div className="absolute left-[18%] top-[25%] w-[64%] h-[50%] flex items-center justify-center text-center text-slate-950 pointer-events-auto leading-tight">
+        <InlineEditableLabel 
+          value={label} 
+          onSave={(val) => updateNodeData(id, { label: val })}
+          className="font-black text-[9.5px] leading-tight text-center break-words select-text w-full"
+        />
+      </div>
+
+      {/* Optional details block at the bottom of the Kaizen node */}
+      {(nodeData.status || nodeData.responsible || nodeData.notes) && (
+        <div className="absolute top-[102%] left-1/2 -translate-x-1/2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-[8.5px] shadow-md text-slate-700 dark:text-slate-300 w-max max-w-[140px] leading-snug text-center z-10 pointer-events-auto select-text font-sans">
+          {nodeData.status && (
+            <div className="font-bold flex items-center justify-center gap-1 mb-0.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${nodeData.status === 'closed' ? 'bg-emerald-500 animate-pulse' : nodeData.status === 'in_progress' ? 'bg-amber-500' : 'bg-red-500'}`} />
+              <span className="uppercase text-[7.5px]">{nodeData.status === 'closed' ? 'Implementado' : nodeData.status === 'in_progress' ? 'En Progreso' : 'Abierto'}</span>
+            </div>
+          )}
+          {nodeData.responsible && (
+            <div className="text-slate-600 dark:text-slate-400 font-semibold truncate">
+              {nodeData.responsible}
+            </div>
+          )}
+          {nodeData.notes && (
+            <div className="text-[7.5px] italic text-slate-400 dark:text-slate-500 mt-0.5 border-t border-slate-100 dark:border-slate-800/60 pt-0.5 truncate max-w-[120px]" title={nodeData.notes}>
+              "{nodeData.notes}"
+            </div>
+          )}
+        </div>
+      )}
       
       <NodeHandles />
     </div>
@@ -600,7 +622,7 @@ export const KaizenImplementedNode: React.FC<NodeProps> = ({ id, data, selected 
   const label = String(nodeData.label || 'Kaizen Imp');
   
   const customBg = nodeData.bgColor || '#22c55e'; // Green
-  const customBorder = nodeData.borderColor || '#15803d'; // Dark Green
+  const customBorder = nodeData.borderColor || '#16a34a'; // Dark Green
 
   return (
     <div className="flex items-center justify-center relative cursor-pointer select-none w-full h-full">
@@ -616,19 +638,39 @@ export const KaizenImplementedNode: React.FC<NodeProps> = ({ id, data, selected 
           className="fill-green-500 stroke-green-700"
           style={{ fill: customBg, stroke: customBorder, strokeWidth: selected ? 4 : 3 }}
         />
-        <foreignObject x="18" y="20" width="64" height="60">
-          <div className="w-full h-full flex flex-col items-center justify-center text-center p-0.5 overflow-hidden text-white leading-tight">
-            <svg className="w-3.5 h-3.5 text-white mb-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            <InlineEditableLabel 
-              value={label} 
-              onSave={(val) => updateNodeData(id, { label: val })}
-              className="font-black text-[9px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
-            />
-          </div>
-        </foreignObject>
       </svg>
+
+      {/* Overlay check icon and label placed OUTSIDE the SVG to prevent html2canvas / html-to-image clipping */}
+      <div className="absolute left-[18%] top-[20%] w-[64%] h-[60%] flex flex-col items-center justify-center text-center text-slate-950 pointer-events-auto leading-tight">
+        <svg className="w-3.5 h-3.5 text-green-900 mb-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="4">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+        <InlineEditableLabel 
+          value={label} 
+          onSave={(val) => updateNodeData(id, { label: val })}
+          className="font-black text-[9.5px] leading-tight text-center break-words select-text w-full"
+        />
+      </div>
+
+      {/* Optional details block at the bottom of the Kaizen Implemented node */}
+      {(nodeData.status || nodeData.responsible || nodeData.notes || true) && (
+        <div className="absolute top-[102%] left-1/2 -translate-x-1/2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1 text-[8.5px] shadow-md text-slate-700 dark:text-slate-350 w-max max-w-[140px] leading-snug text-center z-10 pointer-events-auto select-text font-sans">
+          <div className="font-bold flex items-center justify-center gap-1 mb-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="uppercase text-[7.5px]">{nodeData.status === 'in_progress' ? 'En Progreso' : nodeData.status === 'open' ? 'Abierto' : 'Implementado'}</span>
+          </div>
+          {nodeData.responsible && (
+            <div className="text-slate-660 dark:text-slate-400 font-semibold truncate">
+              {nodeData.responsible}
+            </div>
+          )}
+          {nodeData.notes && (
+            <div className="text-[7.5px] italic text-slate-400 dark:text-slate-500 mt-0.5 border-t border-slate-100 dark:border-slate-800/60 pt-0.5 truncate max-w-[120px]" title={nodeData.notes}>
+              "{nodeData.notes}"
+            </div>
+          )}
+        </div>
+      )}
       
       <NodeHandles />
     </div>
