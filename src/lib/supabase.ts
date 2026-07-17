@@ -39,6 +39,7 @@ export interface VsmProject {
   viewport: { x: number; y: number; zoom: number };
   created_at: string;
   updated_at: string;
+  map_id?: string;
 }
 
 export interface VsmProjectVersion {
@@ -142,7 +143,8 @@ export const db = {
               edges: map?.canvas_data_json?.edges || [],
               viewport: map?.canvas_data_json?.viewport || { x: 0, y: 0, zoom: 1 },
               created_at: item.created_at,
-              updated_at: item.updated_at
+              updated_at: item.updated_at,
+              map_id: map?.id
             };
           });
         }
@@ -258,7 +260,8 @@ export const db = {
           edges: mapData?.canvas_data_json?.edges || [],
           viewport: mapData?.canvas_data_json?.viewport || { x: 0, y: 0, zoom: 1 },
           created_at: projectData.created_at,
-          updated_at: projectData.updated_at
+          updated_at: projectData.updated_at,
+          map_id: mapData?.id
         };
 
         if (localP) {
@@ -365,7 +368,8 @@ export const db = {
           ...newProject,
           author: user?.email || author,
           created_at: projData.created_at,
-          updated_at: projData.updated_at
+          updated_at: projData.updated_at,
+          map_id: newMapId
         };
 
         const projects = getLocalProjects();

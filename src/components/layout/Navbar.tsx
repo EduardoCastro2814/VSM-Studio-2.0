@@ -49,11 +49,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
     setNodes,
     edges,
     isSupabaseConfigured,
+    isVersionsHistoryDisabled,
     loadVersions,
     saveStatus,
     lastSavedTime,
     lastSaveError,
-    saveCurrentProject
+    saveCurrentProject,
+    saveProjectAs
   } = useProject();
 
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
@@ -64,6 +66,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
   const [relativeSavedText, setRelativeSavedText] = useState('hace instantes');
   const [isTestingSave, setIsTestingSave] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
+  const [saveAsName, setSaveAsName] = useState('');
 
   const handleManualSave = async () => {
     try {
@@ -71,6 +75,21 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
       alert('✅ Guardado exitoso: VSM guardado correctamente en Supabase.');
     } catch (err: any) {
       alert(`❌ Error de guardado:\n${err.message || String(err)}`);
+    }
+  };
+
+  const handleSaveAsClick = () => {
+    setSaveAsName(activeProject ? `${activeProject.name} (Copia)` : '');
+    setSaveAsOpen(true);
+  };
+
+  const handleSaveAsSubmit = async () => {
+    if (saveAsName.trim()) {
+      const copy = await saveProjectAs(saveAsName.trim());
+      if (copy) {
+        alert(`✅ Copia creada exitosamente: Ahora estás editando "${copy.name}".`);
+      }
+      setSaveAsOpen(false);
     }
   };
 
@@ -336,9 +355,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
     
     let url: string | null = null;
     if (format === 'png') {
-      url = await exportToPng(activeProject.name, nodes, 'high', activeProject.id, 'supabase');
+      url = await exportToPng(activeProject.name, nodes, edges, 'high', activeProject.id, 'supabase', activeProject.author);
     } else if (format === 'jpeg') {
-      url = await exportToJpg(activeProject.name, nodes, 'high', activeProject.id, 'supabase');
+      url = await exportToJpg(activeProject.name, nodes, edges, 'high', activeProject.id, 'supabase', activeProject.author);
     } else if (format === 'json') {
       url = await exportToJson({
         id: activeProject.id,
@@ -618,6 +637,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
           >
             💾 Guardar
           </button>
+          
+          <button
+            onClick={handleSaveAsClick}
+            disabled={saveStatus === 'saving'}
+            className="flex items-center justify-center p-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 rounded text-[11px] leading-none transition-all active:scale-95 disabled:opacity-50 cursor-pointer font-bold select-none h-5 px-1.5 ml-1"
+            title="Guardar como copia (Nuevo VSM)"
+          >
+            📂 Guardar Como
+          </button>
         </div>
         {/* Toggle Metrics Dashboard Overlay */}
         <button
@@ -745,7 +773,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
               
               <button
                 onClick={() => {
-                  if (activeProject) exportToPng(activeProject.name, nodes, 'high', activeProject.id, 'download');
+                  if (activeProject) exportToPng(activeProject.name, nodes, edges, 'high', activeProject.id, 'download', activeProject.author);
                   setExportDropdownOpen(false);
                 }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
@@ -756,7 +784,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
 
               <button
                 onClick={() => {
-                  if (activeProject) exportToJpg(activeProject.name, nodes, 'high', activeProject.id, 'download');
+                  if (activeProject) exportToJpg(activeProject.name, nodes, edges, 'high', activeProject.id, 'download', activeProject.author);
                   setExportDropdownOpen(false);
                 }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
@@ -935,28 +963,54 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
 
             <div className="space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-x-2 gap-y-2 bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-200 dark:border-slate-800 font-mono text-[11px]">
+                <div>Proyecto Actual:</div>
+                <div className="font-bold text-slate-800 dark:text-slate-200 truncate" title={activeProject?.name || 'N/A'}>
+                  {activeProject?.name || 'N/A'}
+                </div>
+
                 <div>ID del Proyecto:</div>
-                <div className="font-bold text-slate-800 dark:text-slate-200 truncate" title={activeProject?.id || 'Sin ID'}>
+                <div className="font-bold text-slate-800 dark:text-slate-200 truncate select-all" title={activeProject?.id || 'Sin ID'}>
                   {activeProject?.id || 'N/A'}
+                </div>
+
+                <div>ID del Mapa (Map ID):</div>
+                <div className="font-bold text-slate-800 dark:text-slate-200 truncate select-all" title={activeProject?.map_id || 'N/A'}>
+                  {activeProject?.map_id || 'N/A'}
                 </div>
                 
                 <div>Último Guardado:</div>
                 <div className="font-bold text-slate-800 dark:text-slate-200">
                   {lastSavedTime ? lastSavedTime.toLocaleString('es-ES') : 'Nunca'}
                 </div>
+
+                <div>Estado de Guardado:</div>
+                <div className="font-bold text-slate-800 dark:text-slate-200 uppercase">
+                  {saveStatus === 'saved' ? 'Sincronizado' :
+                   saveStatus === 'saving' ? 'Guardando...' : 'Modificado sin guardar'}
+                </div>
                 
-                <div>Nodos Guardados:</div>
+                <div>Cantidad de Nodos:</div>
                 <div className="font-bold text-blue-600 dark:text-blue-400">
                   {nodes.length}
                 </div>
                 
-                <div>Conexiones Guardadas:</div>
+                <div>Cantidad de Conexiones:</div>
                 <div className="font-bold text-purple-600 dark:text-purple-400">
                   {edges.length}
                 </div>
 
                 <div className="col-span-2 border-t border-slate-200 dark:border-slate-800/80 my-1 pt-1 text-[10px] text-slate-400 font-sans font-bold">
                   CONECTIVIDAD SUPABASE
+                </div>
+
+                <div>Estado Supabase:</div>
+                <div className={`font-bold ${isSupabaseConfigured ? 'text-emerald-500' : 'text-slate-500'}`}>
+                  {isSupabaseConfigured ? 'Conectado (Cloud Active)' : 'Local Fallback (Disconnected)'}
+                </div>
+
+                <div>Historial Versiones:</div>
+                <div className={`font-bold ${isVersionsHistoryDisabled ? 'text-slate-400' : 'text-emerald-500'}`}>
+                  {isVersionsHistoryDisabled ? 'Desactivado (Sin Tabla)' : 'Activo'}
                 </div>
 
                 <div>Resultado Escritura:</div>
@@ -1012,6 +1066,48 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleDashboard, isDashboardOp
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GUARDAR COMO MODAL */}
+      {saveAsOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-[380px] rounded-xl shadow-2xl p-5 select-none text-slate-850 dark:text-slate-200">
+            <h3 className="text-sm font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-1.5">
+              <span>💾 Guardar Como</span>
+            </h3>
+            <p className="text-[11.5px] text-slate-500 dark:text-slate-450 mb-3">
+              Crea una copia de este VSM con un nuevo identificador. Útil para versiones AS-IS / TO-BE.
+            </p>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-450 dark:text-slate-500 uppercase mb-1">
+                Nombre del Nuevo Proyecto
+              </label>
+              <input
+                type="text"
+                value={saveAsName}
+                onChange={(e) => setSaveAsName(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs rounded border border-slate-250 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="e.g. VSM Linea 1 - TO-BE"
+                autoFocus
+                onKeyDown={(e) => e.key === 'Enter' && handleSaveAsSubmit()}
+              />
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                onClick={() => setSaveAsOpen(false)}
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-650 dark:text-slate-400 rounded-lg text-xs font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveAsSubmit}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer"
+              >
+                Crear Copia
               </button>
             </div>
           </div>

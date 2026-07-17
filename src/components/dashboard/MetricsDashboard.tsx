@@ -40,7 +40,16 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ onClose }) =
     .filter(n => n.type === 'inventory')
     .sort((a, b) => a.position.x - b.position.x);
 
-  const kaizenNodes = nodes.filter(n => n.type === 'kaizen');
+  const allKaizenNodes = nodes.filter(n => n.type === 'kaizen' || n.type === 'kaizen_implemented');
+  const openKaizens = allKaizenNodes.filter(n => {
+    const status = n.data?.status || (n.type === 'kaizen_implemented' ? 'closed' : 'open');
+    return status === 'open' || status === 'in_progress';
+  });
+  const closedKaizens = allKaizenNodes.filter(n => {
+    const status = n.data?.status || (n.type === 'kaizen_implemented' ? 'closed' : 'open');
+    return status === 'closed';
+  });
+  const compliancePercent = allKaizenNodes.length > 0 ? (closedKaizens.length / allKaizenNodes.length) * 100 : 0;
 
   // 2. Calculations
   let totalVa = 0;
@@ -157,8 +166,8 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ onClose }) =
           <span className="font-extrabold text-slate-800 dark:text-slate-200">{inventoryNodes.length}</span>
         </div>
         <div className="bg-slate-100/40 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/60 px-4 py-3 rounded-lg flex items-center justify-between text-xs">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Oportunidades Kaizen:</span>
-          <span className="font-extrabold text-red-500">{kaizenNodes.length}</span>
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Eventos Kaizen Totales:</span>
+          <span className="font-extrabold text-red-500">{allKaizenNodes.length}</span>
         </div>
         <div className="bg-slate-100/40 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/60 px-4 py-3 rounded-lg flex items-center justify-between text-xs">
           <span className="text-slate-500 dark:text-slate-400 font-medium">Operadores Totales:</span>
@@ -309,6 +318,79 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ onClose }) =
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Section: Kaizen Event Tracking */}
+      {allKaizenNodes.length > 0 && (
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col mt-6 overflow-hidden">
+          <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-4 flex items-center gap-1.5">
+            <Award size={14} className="text-red-500 animate-pulse" />
+            <span>Gestión e Implementación de Kaizens</span>
+          </h3>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-lg border border-slate-150 dark:border-slate-850 flex flex-col justify-center items-center">
+              <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-black tracking-wide">Kaizens Abiertos / Progreso</div>
+              <div className="text-2xl font-black text-amber-500 mt-1">{openKaizens.length}</div>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-lg border border-slate-150 dark:border-slate-850 flex flex-col justify-center items-center">
+              <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-black tracking-wide">Kaizens Cerrados / Implementados</div>
+              <div className="text-2xl font-black text-emerald-500 mt-1">{closedKaizens.length}</div>
+            </div>
+            <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-lg border border-slate-150 dark:border-slate-850 flex flex-col justify-center items-center">
+              <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase font-black tracking-wide">% Tasa de Cumplimiento</div>
+              <div className="text-2xl font-black text-blue-500 mt-1">{compliancePercent.toFixed(0)}%</div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 font-bold">
+                  <th className="py-2.5 px-2">Kaizen</th>
+                  <th className="py-2.5 px-2">Responsable</th>
+                  <th className="py-2.5 px-2">F. Compromiso</th>
+                  <th className="py-2.5 px-2">F. Cierre</th>
+                  <th className="py-2.5 px-2">Costo ($)</th>
+                  <th className="py-2.5 px-2">B. Esperado ($)</th>
+                  <th className="py-2.5 px-2">B. Real ($)</th>
+                  <th className="py-2.5 px-2 text-right">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allKaizenNodes.map(node => {
+                  const nodeData = node.data as any;
+                  const status = nodeData.status || (node.type === 'kaizen_implemented' ? 'closed' : 'open');
+                  const statusText = status === 'closed' ? 'Implementado' : status === 'in_progress' ? 'En Progreso' : 'Abierto';
+                  const statusColor = status === 'closed' 
+                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400' 
+                    : status === 'in_progress' 
+                      ? 'bg-amber-50 text-amber-600 dark:bg-amber-955/20 dark:text-amber-500'
+                      : 'bg-red-50 text-red-650 dark:bg-red-955/20 dark:text-red-400';
+                  
+                  return (
+                    <tr key={node.id} className="border-b border-slate-100 dark:border-slate-800/40 text-slate-700 dark:text-slate-300 hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-colors">
+                      <td className="py-2.5 px-2 font-bold max-w-[200px] truncate" title={nodeData.label || 'Kaizen'}>
+                        {nodeData.label || 'Kaizen Opportunity'}
+                      </td>
+                      <td className="py-2.5 px-2 font-medium">{nodeData.responsible || '-'}</td>
+                      <td className="py-2.5 px-2 font-mono text-slate-500">{nodeData.commitDate || '-'}</td>
+                      <td className="py-2.5 px-2 font-mono text-slate-500">{nodeData.closeDate || '-'}</td>
+                      <td className="py-2.5 px-2 font-mono">${Number(nodeData.cost || 0).toLocaleString()}</td>
+                      <td className="py-2.5 px-2 font-mono text-emerald-600 dark:text-emerald-400">${Number(nodeData.expectedBenefit || 0).toLocaleString()}</td>
+                      <td className="py-2.5 px-2 font-mono text-blue-600 dark:text-blue-400">${Number(nodeData.realBenefit || 0).toLocaleString()}</td>
+                      <td className="py-2.5 px-2 text-right">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor}`}>
+                          {statusText}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

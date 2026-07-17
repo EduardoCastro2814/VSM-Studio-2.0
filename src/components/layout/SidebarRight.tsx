@@ -69,6 +69,31 @@ export const SidebarRight: React.FC = () => {
     handleUpdateSize(undefined, undefined);
   };
 
+  const handleUpdateKaizenStatus = (newStatus: string) => {
+    const newType = newStatus === 'closed' ? 'kaizen_implemented' : 'kaizen';
+    setNodes(prev => prev.map(n => {
+      if (n.id === id) {
+        return {
+          ...n,
+          type: newType,
+          data: {
+            ...n.data,
+            status: newStatus
+          }
+        };
+      }
+      return n;
+    }));
+    setSelectedElement({
+      ...selectedElement,
+      type: newType,
+      data: {
+        ...(selectedElement as any).data,
+        status: newStatus
+      }
+    } as any);
+  };
+
   return (
     <aside className="w-[280px] h-full border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col p-4 overflow-y-auto select-none shrink-0">
       <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
@@ -437,6 +462,111 @@ export const SidebarRight: React.FC = () => {
                   <option value="inspeccion">🔍 Inspección</option>
                   <option value="calidad">🏆 Control de Calidad</option>
                 </select>
+              </div>
+            )}
+
+            {/* Kaizen Node Specialized Fields */}
+            {(element.type === 'kaizen' || element.type === 'kaizen_implemented') && (
+              <div className="space-y-3 border-t border-slate-100 dark:border-slate-800/80 pt-3">
+                <div className="text-[10px] uppercase font-black text-red-500 dark:text-red-400 flex items-center gap-1.5">
+                  <Activity size={10} />
+                  <span>Gestión de Evento Kaizen</span>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-400 dark:text-slate-500 mb-1">
+                    Responsable
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Ing. Gómez"
+                    value={element.data.responsible || ''}
+                    onChange={(e) => updateNodeData(id, { responsible: e.target.value })}
+                    className="w-full px-2.5 py-1.5 text-xs rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-400 dark:text-slate-500 mb-1">
+                      F. Compromiso
+                    </label>
+                    <input
+                      type="date"
+                      value={element.data.commitDate || ''}
+                      onChange={(e) => updateNodeData(id, { commitDate: e.target.value })}
+                      className="w-full px-2 py-1 text-xs font-mono rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 dark:text-slate-500 mb-1">
+                      F. Cierre
+                    </label>
+                    <input
+                      type="date"
+                      value={element.data.closeDate || ''}
+                      onChange={(e) => updateNodeData(id, { closeDate: e.target.value })}
+                      className="w-full px-2 py-1 text-xs font-mono rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div>
+                    <label className="block text-[8.5px] font-bold text-slate-400 dark:text-slate-500 mb-0.5">
+                      Costo ($)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={element.data.cost || ''}
+                      onChange={(e) => updateNodeData(id, { cost: e.target.value })}
+                      className="w-full px-1.5 py-1 text-xs font-mono rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[8.5px] font-bold text-slate-400 dark:text-slate-500 mb-0.5">
+                      B. Esp ($)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={element.data.expectedBenefit || ''}
+                      onChange={(e) => updateNodeData(id, { expectedBenefit: e.target.value })}
+                      className="w-full px-1.5 py-1 text-xs font-mono rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[8.5px] font-bold text-slate-400 dark:text-slate-500 mb-0.5">
+                      B. Real ($)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={element.data.realBenefit || ''}
+                      onChange={(e) => updateNodeData(id, { realBenefit: e.target.value })}
+                      className="w-full px-1.5 py-1 text-xs font-mono rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-400 dark:text-slate-500 mb-1">
+                    Estado Kaizen
+                  </label>
+                  <select
+                    value={element.data.status || (element.type === 'kaizen_implemented' ? 'closed' : 'open')}
+                    onChange={(e) => handleUpdateKaizenStatus(e.target.value)}
+                    className="w-full px-2 py-1.5 text-xs rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold"
+                  >
+                    <option value="open">🔴 Abierto (Oportunidad)</option>
+                    <option value="in_progress">🟡 En Progreso</option>
+                    <option value="closed">🟢 Cerrado / Implementado</option>
+                  </select>
+                </div>
               </div>
             )}
 

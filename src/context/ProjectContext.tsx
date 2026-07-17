@@ -11,7 +11,7 @@ import {
   type Connection,
   addEdge
 } from '@xyflow/react';
-import { db, supabase, isSupabaseConfigured, type VsmProject, type VsmProjectVersion } from '../lib/supabase';
+import { db, supabase, isSupabaseConfigured, isVersionsHistoryDisabled, type VsmProject, type VsmProjectVersion } from '../lib/supabase';
 
 // Force Public and Anonymous access (No Auth required)
 export const PUBLIC_ACCESS = true;
@@ -43,6 +43,7 @@ interface ProjectContextProps {
   user: any | null;
   signOut: () => Promise<void>;
   isSupabaseConfigured: boolean;
+  isVersionsHistoryDisabled: boolean;
   isAuthOpen: boolean;
   setIsAuthOpen: (val: boolean) => void;
   
@@ -51,6 +52,7 @@ interface ProjectContextProps {
   loadProject: (id: string) => Promise<boolean>;
   createNewProject: (name: string, author?: string) => Promise<VsmProject>;
   saveCurrentProject: () => Promise<void>;
+  saveProjectAs: (newName: string) => Promise<VsmProject | null>;
   deleteProject: (id: string) => Promise<void>;
   duplicateProject: (id: string) => Promise<void>;
   renameProject: (id: string, name: string) => Promise<void>;
@@ -146,8 +148,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Helper functions for local fallback
   const getLocalProjects = (): VsmProject[] => {
-    const data = localStorage.getItem('vsm_projects');
+    const data = localStorage.getItem('vsm_studio_projects');
     return data ? JSON.parse(data) : [];
+  };
+
+  const saveLocalProjects = (projects: VsmProject[]) => {
+    localStorage.setItem('vsm_studio_projects', JSON.stringify(projects));
   };
 
   // Load all projects from storage (LocalStorage is primary for anonymous, Supabase is fallback)
@@ -292,6 +298,104 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const proj = await db.createProject(name, author);
     setProjects(prev => [proj, ...prev]);
     return proj;
+  };
+
+  // Save active project as a new copy (Guardar Como)
+  const saveProjectAs = async (newName: string): Promise<VsmProject | null> => {
+    if (!activeProject) return null;
+    setIsSaving(true);
+    setSaveStatus('saving');
+    try {
+      const newProjectId = crypto.randomUUID();
+      const newMapId = crypto.randomUUID();
+      const nowStr = new Date().toISOString();
+
+      const newProjObj: VsmProject = {
+        id: newProjectId,
+        name: newName,
+        author: activeProject.author,
+        nodes: JSON.parse(JSON.stringify(nodes)),
+        edges: JSON.parse(JSON.stringify(edges)),
+        viewport: { ...activeProject.viewport },
+        created_at: nowStr,
+        updated_at: nowStr,
+        map_id: newMapId
+      };
+
+      if (isSupabaseConfigured && supabase) {
+        const { data: { user } } = await supabase.auth.getUser();
+        const insertObj: any = {
+          id: newProjectId,
+          name: newName
+        };
+        if (user) {
+          insertObj.owner_id = user.id;
+        }
+
+        console.log(`Consulta ejecutada:\nINSERT INTO projects (id, name, owner_id) VALUES ('${newProjectId}', '${newName}', '${user?.id || 'NULL'}')`);
+        const { error: projError } = await supabase
+          .from('projects')
+          .insert([insertObj]);
+
+        if (projError) {
+          console.log(`Resultado:\nERROR: ${projError.message}`);
+          throw new Error(`Error al crear copia en Supabase: ${projError.message}`);
+        }
+        console.log(`Resultado:\nOK`);
+
+        const canvasData = {
+          nodes: newProjObj.nodes,
+          edges: newProjObj.edges,
+          viewport: newProjObj.viewport
+        };
+        console.log(`Consulta ejecutada:\nINSERT INTO vsm_maps (id, project_id, name, canvas_data_json) VALUES ...`);
+        const { error: mapError } = await supabase
+          .from('vsm_maps')
+          .insert([{
+            id: newMapId,
+            project_id: newProjectId,
+            name: 'Mapa Principal',
+            canvas_data_json: canvasData
+          }]);
+
+        if (mapError) {
+          console.log(`Resultado:\nERROR: ${mapError.message}`);
+          throw new Error(`Error al crear mapa de copia: ${mapError.message}`);
+        }
+        console.log(`Resultado:\nOK`);
+
+        await db.createVersion(newProjectId, 'Copia inicial (Guardar Como)', newProjObj.nodes, newProjObj.edges, 'Copia');
+      }
+
+      const localProjects = getLocalProjects();
+      localProjects.push(newProjObj);
+      saveLocalProjects(localProjects);
+
+      setProjects(prev => [newProjObj, ...prev]);
+      setActiveProject(newProjObj);
+      setNodesState(newProjObj.nodes);
+      setEdgesState(newProjObj.edges);
+      
+      setHistory([{ nodes: newProjObj.nodes, edges: newProjObj.edges }]);
+      setHistoryIndex(0);
+      setSelectedElement(null);
+      isInitialLoadRef.current = true;
+      setSaveStatus('saved');
+      setLastSavedTime(new Date());
+      setLastSaveError(null);
+
+      await loadVersions(newProjectId);
+
+      return newProjObj;
+    } catch (e: any) {
+      console.error('Failed to save project as:', e);
+      setSaveStatus('unsaved');
+      setLastSaveError(e.message || String(e));
+      alert(`Error al guardar como: ${e.message || e}`);
+      return null;
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Save project (Requirements #1, #2, #3, #8)
@@ -626,6 +730,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       user,
       signOut,
       isSupabaseConfigured,
+      isVersionsHistoryDisabled,
       isAuthOpen,
       setIsAuthOpen: () => {}, // Disable auth triggers in public mode
       
@@ -633,6 +738,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       loadProject,
       createNewProject,
       saveCurrentProject,
+      saveProjectAs,
       deleteProject,
       duplicateProject,
       renameProject,
