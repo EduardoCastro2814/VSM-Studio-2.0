@@ -48,7 +48,7 @@ interface ProjectContextProps {
   
   // Projects Actions
   loadProjects: () => Promise<void>;
-  loadProject: (id: string) => Promise<void>;
+  loadProject: (id: string) => Promise<boolean>;
   createNewProject: (name: string, author?: string) => Promise<VsmProject>;
   saveCurrentProject: () => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
@@ -237,7 +237,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const signOut = async () => {};
 
   // Load a single project into the workspace
-  const loadProject = async (id: string) => {
+  const loadProject = async (id: string): Promise<boolean> => {
     setIsLoading(true);
     try {
       console.log(`📂 VSM Studio: Solicitando carga de proyecto ID: ${id}`);
@@ -260,11 +260,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setLastSaveError(null);
         
         await loadVersions(project.id);
+        return true;
       } else {
         throw new Error('Proyecto no encontrado.');
       }
     } catch (e: any) {
       console.error(`❌ VSM Studio: Error al cargar el proyecto ${id}:`, e.message || e);
+      alert(`Error al cargar el proyecto: ${e.message || e}`);
+      
       // Fallback to local storage if DB query fails or is blocked
       const localP = getLocalProjects().find(p => p.id === id);
       if (localP) {
@@ -276,9 +279,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setSaveStatus('saved');
         setLastSavedTime(localP.updated_at ? new Date(localP.updated_at) : new Date());
         setLastSaveError(null);
-      } else {
-        alert(`Error al cargar el proyecto: ${e.message || e}`);
+        return true;
       }
+      return false;
     } finally {
       setIsLoading(false);
     }

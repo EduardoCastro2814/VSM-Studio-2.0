@@ -43,15 +43,24 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({ onOpenProject })
   const [creatorName, setCreatorName] = useState('Lean Expert');
 
   const handleCreate = async () => {
-    const projName = `VSM ${search.trim() || 'Nuevo Mapa'}`;
-    const newProj = await createNewProject(projName, creatorName);
-    await loadProject(newProj.id);
-    onOpenProject();
+    try {
+      const projName = `VSM ${search.trim() || 'Nuevo Mapa'}`;
+      const newProj = await createNewProject(projName, creatorName);
+      const success = await loadProject(newProj.id);
+      if (success) {
+        onOpenProject();
+      }
+    } catch (e: any) {
+      console.error('Error al crear el proyecto:', e);
+      alert(`Error al crear el proyecto: ${e.message || e}`);
+    }
   };
 
   const handleOpen = async (id: string) => {
-    await loadProject(id);
-    onOpenProject();
+    const success = await loadProject(id);
+    if (success) {
+      onOpenProject();
+    }
   };
 
   const handleStartRename = (id: string, currentName: string) => {

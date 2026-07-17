@@ -17,6 +17,8 @@ export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey) 
   : null;
 
+export let isVersionsHistoryDisabled = false;
+
 // Async connection validation log
 if (isSupabaseConfigured && supabase) {
   supabase.auth.getSession().then(({ data, error }) => {
@@ -76,21 +78,66 @@ const saveLocalVersions = (versions: VsmProjectVersion[]) => {
 export const db = {
   async getProjects(): Promise<VsmProject[]> {
     if (isSupabaseConfigured && supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // Query projects, joining vsm_maps and profiles owner
-        const { data, error } = await supabase
-          .from('projects')
-          .select('id, name, description, created_at, updated_at, owner_id, vsm_maps(id, name, canvas_data_json), profiles(email)')
-          .order('updated_at', { ascending: false });
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          console.log(`Consulta ejecutada:\nSELECT id, name, description, created_at, updated_at, owner_id FROM projects ORDER BY updated_at DESC`);
+          const { data: projectsData, error: projectsError } = await supabase
+            .from('projects')
+            .select('id, name, description, created_at, updated_at, owner_id')
+            .order('updated_at', { ascending: false });
 
-        if (!error && data) {
-          return data.map((item: any) => {
-            const map = item.vsm_maps?.[0];
+          if (projectsError) {
+            console.log(`Resultado:\nERROR: ${projectsError.message}`);
+            throw new Error(`Error al obtener proyectos: ${projectsError.message}`);
+          }
+          console.log(`Resultado:\nOK`);
+          console.log(`Proyectos encontrados:\n${JSON.stringify(projectsData)}`);
+
+          let mapsData: any[] = [];
+          if (projectsData && projectsData.length > 0) {
+            const projectIds = projectsData.map(p => p.id);
+            console.log(`Consulta ejecutada:\nSELECT id, project_id, name, canvas_data_json FROM vsm_maps WHERE project_id IN (${projectIds.map(id => `'${id}'`).join(', ')})`);
+            const { data: maps, error: mapsError } = await supabase
+              .from('vsm_maps')
+              .select('id, project_id, name, canvas_data_json')
+              .in('project_id', projectIds);
+
+            if (mapsError) {
+              console.log(`Resultado:\nERROR: ${mapsError.message}`);
+              throw new Error(`Error al obtener mapas de proyectos: ${mapsError.message}`);
+            }
+            console.log(`Resultado:\nOK`);
+            console.log(`Mapas encontrados:\n${JSON.stringify(maps)}`);
+            mapsData = maps || [];
+          }
+
+          let profilesData: any[] = [];
+          if (projectsData && projectsData.length > 0) {
+            const ownerIds = projectsData.map(p => p.owner_id).filter(Boolean);
+            if (ownerIds.length > 0) {
+              console.log(`Consulta ejecutada:\nSELECT id, email FROM profiles WHERE id IN (${ownerIds.map(id => `'${id}'`).join(', ')})`);
+              const { data: profiles, error: profilesError } = await supabase
+                .from('profiles')
+                .select('id, email')
+                .in('id', ownerIds);
+
+              if (profilesError) {
+                console.log(`Resultado:\nERROR profiles: ${profilesError.message}`);
+              } else {
+                console.log(`Resultado:\nOK profiles`);
+                profilesData = profiles || [];
+              }
+            }
+          }
+
+          return projectsData.map((item: any) => {
+            const map = mapsData.find(m => m.project_id === item.id);
+            const profile = profilesData.find(p => p.id === item.owner_id);
             return {
               id: item.id,
               name: item.name,
-              author: item.profiles?.email || 'Lean Expert',
+              author: profile?.email || 'Lean Expert',
               nodes: map?.canvas_data_json?.nodes || [],
               edges: map?.canvas_data_json?.edges || [],
               viewport: map?.canvas_data_json?.viewport || { x: 0, y: 0, zoom: 1 },
@@ -99,7 +146,9 @@ export const db = {
             };
           });
         }
-        console.error('❌ Supabase: Error SQL o RLS al obtener proyectos:', error.message || error);
+      } catch (err: any) {
+        console.error('❌ Supabase: Excepción al obtener proyectos:', err.message || err);
+        throw err;
       }
     }
     return getLocalProjects().sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
@@ -111,67 +160,141 @@ export const db = {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        console.log(`🔍 [DIAGNÓSTICO CARGA] Consultando Supabase para proyecto ID: ${id}`);
-        const { data, error } = await supabase
+        console.log(`Proyecto solicitado:\nID: ${id}`);
+        console.log(`Consulta ejecutada:\nSELECT id, name, description, created_at, updated_at, owner_id FROM projects WHERE id = '${id}'`);
+        
+        const { data: projectData, error: projectError } = await supabase
           .from('projects')
-          .select('id, name, description, created_at, updated_at, owner_id, vsm_maps(id, name, canvas_data_json), profiles(email)')
+          .select('id, name, description, created_at, updated_at, owner_id')
           .eq('id', id)
           .maybeSingle();
 
-        if (error) {
-          console.error('❌ [DIAGNÓSTICO CARGA] Error al obtener proyecto de Supabase:', error.message || error);
-          return localP || null;
+        if (projectError) {
+          console.log(`Resultado:\nERROR: ${projectError.message}`);
+          throw new Error(`Error en consulta de proyectos: ${projectError.message}`);
+        }
+        
+        console.log(`Resultado:\nOK`);
+        console.log(`Proyecto encontrado:\n${JSON.stringify(projectData)}`);
+
+        if (!projectData) {
+          if (localP) {
+            console.log(`💾 [DIAGNÓSTICO CARGA] Proyecto no encontrado en Supabase, usando copia local.`);
+            return localP;
+          }
+          throw new Error(`Proyecto no encontrado.`);
         }
 
-        if (data) {
-          const map = data.vsm_maps?.[0];
-          const supabaseProject: VsmProject = {
-            id: data.id,
-            name: data.name,
-            author: (data.profiles as any)?.email || 'Lean Expert',
-            nodes: map?.canvas_data_json?.nodes || [],
-            edges: map?.canvas_data_json?.edges || [],
-            viewport: map?.canvas_data_json?.viewport || { x: 0, y: 0, zoom: 1 },
-            created_at: data.created_at,
-            updated_at: data.updated_at
-          };
+        console.log(`Consulta ejecutada:\nSELECT id, name, canvas_data_json FROM vsm_maps WHERE project_id = '${id}'`);
+        const { data: mapData, error: mapError } = await supabase
+          .from('vsm_maps')
+          .select('id, name, canvas_data_json')
+          .eq('project_id', id)
+          .maybeSingle();
 
-          console.log(`📥 [DIAGNÓSTICO CARGA] Proyecto obtenido de Supabase. Nodos: ${supabaseProject.nodes.length}, Conexiones: ${supabaseProject.edges.length}`);
+        if (mapError) {
+          console.log(`Resultado:\nERROR: ${mapError.message}`);
+          throw new Error(`Error en consulta de mapas: ${mapError.message}`);
+        }
 
-          if (localP) {
-            const localTime = new Date(localP.updated_at).getTime();
-            const supabaseTime = new Date(supabaseProject.updated_at).getTime();
-            const localHasMoreData = (localP.nodes?.length || 0) > (supabaseProject.nodes?.length || 0);
+        console.log(`Resultado:\nOK`);
+        console.log(`Mapa encontrado:\n${JSON.stringify(mapData)}`);
 
-            if (localTime > supabaseTime || (localHasMoreData && supabaseProject.nodes?.length === 0)) {
-              console.log('🔄 [DIAGNÓSTICO CARGA] La copia local es más reciente o contiene más datos. Usando copia local y programando sincronización con Supabase en segundo plano.');
-              
-              // Background sync back to Supabase
-              this.saveProject(localP).catch(err => {
-                console.error('❌ [DIAGNÓSTICO CARGA] Falló la sincronización automática en segundo plano:', err.message || err);
-              });
-              
-              return localP;
+        let authorEmail = 'Lean Expert';
+        if (projectData.owner_id) {
+          console.log(`Consulta ejecutada:\nSELECT email FROM profiles WHERE id = '${projectData.owner_id}'`);
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('email')
+            .eq('id', projectData.owner_id)
+            .maybeSingle();
+
+          if (profileError) {
+            console.log(`Resultado:\nERROR profiles: ${profileError.message}`);
+          } else {
+            console.log(`Resultado:\nOK profiles`);
+            if (profileData?.email) {
+              authorEmail = profileData.email;
             }
           }
-
-          // Update local copy
-          const index = localProjects.findIndex(p => p.id === id);
-          if (index !== -1) {
-            localProjects[index] = supabaseProject;
-          } else {
-            localProjects.push(supabaseProject);
-          }
-          saveLocalProjects(localProjects);
-          return supabaseProject;
         }
+
+        let latestVersionData: any = null;
+        if (!isVersionsHistoryDisabled) {
+          try {
+            if (mapData) {
+              console.log(`Consulta ejecutada:\nSELECT * FROM vsm_map_versions WHERE map_id = '${mapData.id}' ORDER BY created_at DESC LIMIT 1`);
+              const { data: versionData, error: versionError } = await supabase
+                .from('vsm_map_versions')
+                .select('*')
+                .eq('map_id', mapData.id)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+              if (versionError) {
+                console.log(`Resultado:\nERROR vsm_map_versions: ${versionError.message}`);
+                if (versionError.code === '42P01' || versionError.message?.includes('vsm_map_versions') || versionError.message?.includes('relation') || versionError.message?.includes('Could not find the table')) {
+                  console.warn('⚠️ La tabla vsm_map_versions no existe o relación no encontrada. Desactivando historial de versiones.');
+                  isVersionsHistoryDisabled = true;
+                }
+              } else {
+                console.log(`Resultado:\nOK`);
+                if (versionData && versionData.length > 0) {
+                  latestVersionData = versionData[0];
+                }
+              }
+            }
+          } catch {
+            // Suppress exception
+          }
+        }
+        console.log(`Versión encontrada:\n${JSON.stringify(latestVersionData)}`);
+
+        const supabaseProject: VsmProject = {
+          id: projectData.id,
+          name: projectData.name,
+          author: authorEmail,
+          nodes: mapData?.canvas_data_json?.nodes || [],
+          edges: mapData?.canvas_data_json?.edges || [],
+          viewport: mapData?.canvas_data_json?.viewport || { x: 0, y: 0, zoom: 1 },
+          created_at: projectData.created_at,
+          updated_at: projectData.updated_at
+        };
+
+        if (localP) {
+          const localTime = new Date(localP.updated_at).getTime();
+          const supabaseTime = new Date(supabaseProject.updated_at).getTime();
+          const localHasMoreData = (localP.nodes?.length || 0) > (supabaseProject.nodes?.length || 0);
+
+          if (localTime > supabaseTime || (localHasMoreData && supabaseProject.nodes?.length === 0)) {
+            console.log('🔄 [DIAGNÓSTICO CARGA] La copia local es más reciente o contiene más datos. Usando copia local y programando sincronización.');
+            this.saveProject(localP).catch(err => {
+              console.error('❌ [DIAGNÓSTICO CARGA] Falló la sincronización automática:', err.message || err);
+            });
+            return localP;
+          }
+        }
+
+        // Update local copy
+        const index = localProjects.findIndex(p => p.id === id);
+        if (index !== -1) {
+          localProjects[index] = supabaseProject;
+        } else {
+          localProjects.push(supabaseProject);
+        }
+        saveLocalProjects(localProjects);
+        return supabaseProject;
       } catch (err: any) {
         console.error('❌ [DIAGNÓSTICO CARGA] Excepción durante la carga de Supabase:', err.message || err);
+        throw err;
       }
     }
 
-    console.log(`💾 [DIAGNÓSTICO CARGA] Usando copia local (Supabase no disponible o vacío) para proyecto ID: ${id}`);
-    return localP || null;
+    console.log(`💾 [DIAGNÓSTICO CARGA] Usando copia local para proyecto ID: ${id}`);
+    if (!localP) {
+      throw new Error(`Proyecto no encontrado.`);
+    }
+    return localP;
   },
 
   async createProject(name: string, author = 'Anonymous'): Promise<VsmProject> {
@@ -191,48 +314,69 @@ export const db = {
     };
 
     if (isSupabaseConfigured && supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      const insertObj: any = {
-        id: newProjectId,
-        name: name
-      };
-      if (user) {
-        insertObj.owner_id = user.id;
-      }
-
-      // 1. Create project
-      const { data: projData, error: projError } = await supabase
-        .from('projects')
-        .insert([insertObj])
-        .select()
-        .single();
-
-        if (!projError && projData) {
-          // 2. Create default VSM Map
-          const { error: mapError } = await supabase
-            .from('vsm_maps')
-            .insert([{
-              id: newMapId,
-              project_id: newProjectId,
-              name: 'Mapa Principal',
-              canvas_data_json: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }
-            }]);
-
-          if (!mapError) {
-            // Log creation version
-            await this.createVersion(newProjectId, 'Creación Inicial', [], [], 'Creación');
-            
-            return {
-              ...newProject,
-              author: user?.email || author,
-              created_at: projData.created_at,
-              updated_at: projData.updated_at
-            };
-          }
-          console.error('❌ Supabase: Error SQL o RLS al crear el mapa:', mapError?.message || mapError || 'Error desconocido');
-        } else {
-          console.error('❌ Supabase: Error SQL o RLS al crear el proyecto:', projError?.message || projError || 'Error desconocido');
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const insertObj: any = {
+          id: newProjectId,
+          name: name
+        };
+        if (user) {
+          insertObj.owner_id = user.id;
         }
+
+        console.log(`Consulta ejecutada:\nINSERT INTO projects (id, name, owner_id) VALUES ('${newProjectId}', '${name}', '${user?.id || 'NULL'}')`);
+        // 1. Create project
+        const { data: projData, error: projError } = await supabase
+          .from('projects')
+          .insert([insertObj])
+          .select()
+          .maybeSingle();
+
+        if (projError) {
+          console.log(`Resultado:\nERROR: ${projError.message}`);
+          throw new Error(`Error al crear el proyecto: ${projError.message}`);
+        }
+        console.log(`Resultado:\nOK`);
+        console.log(`Proyecto creado:\n${JSON.stringify(projData)}`);
+
+        // 2. Create default VSM Map
+        const mapInsert = {
+          id: newMapId,
+          project_id: newProjectId,
+          name: 'Mapa Principal',
+          canvas_data_json: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }
+        };
+        console.log(`Consulta ejecutada:\nINSERT INTO vsm_maps (id, project_id, name, canvas_data_json) VALUES ('${newMapId}', '${newProjectId}', 'Mapa Principal', '{"nodes": [], "edges": [], "viewport": {"x": 0, "y": 0, "zoom": 1}}')`);
+        const { error: mapError } = await supabase
+          .from('vsm_maps')
+          .insert([mapInsert]);
+
+        if (mapError) {
+          console.log(`Resultado:\nERROR: ${mapError.message}`);
+          throw new Error(`Error al crear el mapa del proyecto: ${mapError.message}`);
+        }
+        console.log(`Resultado:\nOK`);
+        console.log(`Mapa creado:\n${JSON.stringify(mapInsert)}`);
+
+        // Log creation version
+        await this.createVersion(newProjectId, 'Creación Inicial', [], [], 'Creación');
+        
+        const returnProj: VsmProject = {
+          ...newProject,
+          author: user?.email || author,
+          created_at: projData.created_at,
+          updated_at: projData.updated_at
+        };
+
+        const projects = getLocalProjects();
+        projects.push(returnProj);
+        saveLocalProjects(projects);
+
+        return returnProj;
+      } catch (err: any) {
+        console.error('❌ Supabase: Excepción al crear el proyecto:', err.message || err);
+        throw err;
+      }
     }
 
     const projects = getLocalProjects();
@@ -257,8 +401,7 @@ export const db = {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        // Step 1: Check project row in Supabase
-        console.log('🔍 [DIAGNÓSTICO GUARDADO] Buscando registro en tabla projects...');
+        console.log(`Consulta ejecutada:\nSELECT id FROM projects WHERE id = '${updatedProject.id}'`);
         const { data: existingProject, error: checkProjErr } = await supabase
           .from('projects')
           .select('id')
@@ -266,12 +409,15 @@ export const db = {
           .maybeSingle();
 
         if (checkProjErr) {
-          console.error('❌ [DIAGNÓSTICO GUARDADO] Error al buscar proyecto en Supabase:', checkProjErr.message || checkProjErr);
+          console.log(`Resultado:\nERROR: ${checkProjErr.message}`);
+          throw new Error(`Error al buscar proyecto: ${checkProjErr.message}`);
         }
+        console.log(`Resultado:\nOK`);
+        console.log(`Proyecto encontrado:\n${JSON.stringify(existingProject)}`);
 
         let projResult;
         if (existingProject) {
-          console.log('🔄 [DIAGNÓSTICO GUARDADO] Proyecto encontrado. Ejecutando UPDATE...');
+          console.log(`Consulta ejecutada:\nUPDATE projects SET name = '${updatedProject.name}', updated_at = '${updatedProject.updated_at}' WHERE id = '${updatedProject.id}'`);
           projResult = await supabase
             .from('projects')
             .update({
@@ -280,27 +426,35 @@ export const db = {
             })
             .eq('id', updatedProject.id)
             .select();
-          console.log('📥 [DIAGNÓSTICO GUARDADO] Resultado UPDATE proyecto:', projResult);
+          if (projResult.error) {
+            console.log(`Resultado:\nERROR: ${projResult.error.message}`);
+          } else {
+            console.log(`Resultado:\nOK`);
+          }
         } else {
-          console.log('➕ [DIAGNÓSTICO GUARDADO] Proyecto no encontrado. Ejecutando INSERT...');
+          const insertObj = {
+            id: updatedProject.id,
+            name: updatedProject.name,
+            created_at: updatedProject.created_at || updatedProject.updated_at,
+            updated_at: updatedProject.updated_at
+          };
+          console.log(`Consulta ejecutada:\nINSERT INTO projects (id, name, created_at, updated_at) VALUES ...`);
           projResult = await supabase
             .from('projects')
-            .insert([{
-              id: updatedProject.id,
-              name: updatedProject.name,
-              created_at: updatedProject.created_at || updatedProject.updated_at,
-              updated_at: updatedProject.updated_at
-            }])
+            .insert([insertObj])
             .select();
-          console.log('📥 [DIAGNÓSTICO GUARDADO] Resultado INSERT proyecto:', projResult);
+          if (projResult.error) {
+            console.log(`Resultado:\nERROR: ${projResult.error.message}`);
+          } else {
+            console.log(`Resultado:\nOK`);
+          }
         }
 
         if (projResult.error) {
           throw new Error(`Error en proyectos: ${projResult.error.message}`);
         }
 
-        // Step 2: Check map row in Supabase
-        console.log('🔍 [DIAGNÓSTICO GUARDADO] Buscando registro en tabla vsm_maps...');
+        console.log(`Consulta ejecutada:\nSELECT id FROM vsm_maps WHERE project_id = '${updatedProject.id}'`);
         const { data: existingMap, error: checkMapErr } = await supabase
           .from('vsm_maps')
           .select('id')
@@ -308,8 +462,11 @@ export const db = {
           .maybeSingle();
 
         if (checkMapErr) {
-          console.error('❌ [DIAGNÓSTICO GUARDADO] Error al buscar mapa en Supabase:', checkMapErr.message || checkMapErr);
+          console.log(`Resultado:\nERROR: ${checkMapErr.message}`);
+          throw new Error(`Error al buscar mapa: ${checkMapErr.message}`);
         }
+        console.log(`Resultado:\nOK`);
+        console.log(`Mapa encontrado:\n${JSON.stringify(existingMap)}`);
 
         let mapResult;
         const canvasData = {
@@ -319,7 +476,7 @@ export const db = {
         };
 
         if (existingMap) {
-          console.log('🔄 [DIAGNÓSTICO GUARDADO] Mapa encontrado. Ejecutando UPDATE...');
+          console.log(`Consulta ejecutada:\nUPDATE vsm_maps SET canvas_data_json = ..., updated_at = ... WHERE id = '${existingMap.id}'`);
           mapResult = await supabase
             .from('vsm_maps')
             .update({
@@ -328,21 +485,30 @@ export const db = {
             })
             .eq('id', existingMap.id)
             .select();
-          console.log('📥 [DIAGNÓSTICO GUARDADO] Resultado UPDATE mapa:', mapResult);
+          if (mapResult.error) {
+            console.log(`Resultado:\nERROR: ${mapResult.error.message}`);
+          } else {
+            console.log(`Resultado:\nOK`);
+          }
         } else {
-          console.log('➕ [DIAGNÓSTICO GUARDADO] Mapa no encontrado. Ejecutando INSERT...');
+          const insertMapObj = {
+            id: crypto.randomUUID(),
+            project_id: updatedProject.id,
+            name: 'Mapa Principal',
+            canvas_data_json: canvasData,
+            created_at: updatedProject.updated_at,
+            updated_at: updatedProject.updated_at
+          };
+          console.log(`Consulta ejecutada:\nINSERT INTO vsm_maps (id, project_id, name, canvas_data_json) VALUES ...`);
           mapResult = await supabase
             .from('vsm_maps')
-            .insert([{
-              id: crypto.randomUUID(),
-              project_id: updatedProject.id,
-              name: 'Mapa Principal',
-              canvas_data_json: canvasData,
-              created_at: updatedProject.updated_at,
-              updated_at: updatedProject.updated_at
-            }])
+            .insert([insertMapObj])
             .select();
-          console.log('📥 [DIAGNÓSTICO GUARDADO] Resultado INSERT mapa:', mapResult);
+          if (mapResult.error) {
+            console.log(`Resultado:\nERROR: ${mapResult.error.message}`);
+          } else {
+            console.log(`Resultado:\nOK`);
+          }
         }
 
         if (mapResult.error) {
@@ -351,7 +517,6 @@ export const db = {
 
         console.log('✅ [DIAGNÓSTICO GUARDADO] Sincronización con Supabase exitosa.');
         
-        // Save locally to keep local copy updated
         const projects = getLocalProjects();
         const index = projects.findIndex(p => p.id === updatedProject.id);
         if (index !== -1) {
@@ -369,7 +534,6 @@ export const db = {
       }
     }
 
-    // Fallback LocalStorage if not configured
     console.log('💾 [DIAGNÓSTICO GUARDADO] Guardando únicamente en LocalStorage (Supabase desactivado).');
     const projects = getLocalProjects();
     const index = projects.findIndex(p => p.id === updatedProject.id);
@@ -396,7 +560,6 @@ export const db = {
     const filtered = projects.filter(p => p.id !== id);
     saveLocalProjects(filtered);
 
-    // Also clear versions
     const versions = getLocalVersions();
     const filteredVersions = versions.filter(v => v.project_id !== id);
     saveLocalVersions(filteredVersions);
@@ -408,43 +571,65 @@ export const db = {
     const versionId = crypto.randomUUID();
     const nowStr = new Date().toISOString();
 
-    if (isSupabaseConfigured && supabase) {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // Find the associated map ID
-      const { data: mapData } = await supabase
-        .from('vsm_maps')
-        .select('id')
-        .eq('project_id', projectId)
-        .single();
+    if (isSupabaseConfigured && supabase && !isVersionsHistoryDisabled) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        console.log(`Consulta ejecutada:\nSELECT id FROM vsm_maps WHERE project_id = '${projectId}'`);
+        const { data: mapData, error: mapError } = await supabase
+          .from('vsm_maps')
+          .select('id')
+          .eq('project_id', projectId)
+          .maybeSingle();
 
-      if (mapData) {
-        const { data, error } = await supabase
-          .from('vsm_map_versions')
-          .insert([{
+        if (mapError) {
+          console.log(`Resultado:\nERROR: ${mapError.message}`);
+        } else {
+          console.log(`Resultado:\nOK`);
+          console.log(`Mapa encontrado:\n${JSON.stringify(mapData)}`);
+        }
+
+        if (mapData) {
+          const insertObj = {
             id: versionId,
             map_id: mapData.id,
             name,
             canvas_data_json: { nodes, edges },
             created_by: user?.id || null,
             action_name: actionName
-          }])
-          .select()
-          .single();
-
-        if (!error && data) {
-          return {
-            id: data.id,
-            project_id: projectId,
-            name: data.name,
-            nodes: (data.canvas_data_json as any)?.nodes || [],
-            edges: (data.canvas_data_json as any)?.edges || [],
-            created_at: data.created_at,
-            action_name: data.action_name,
-            created_by_email: user?.email || 'Sistema'
           };
+          console.log(`Consulta ejecutada:\nINSERT INTO vsm_map_versions (id, map_id, name, canvas_data_json, created_by, action_name) VALUES ...`);
+          const { data, error } = await supabase
+            .from('vsm_map_versions')
+            .insert([insertObj])
+            .select()
+            .maybeSingle();
+
+          if (error) {
+            console.log(`Resultado:\nERROR: ${error.message}`);
+            if (error.code === '42P01' || error.message?.includes('vsm_map_versions') || error.message?.includes('relation') || error.message?.includes('Could not find the table')) {
+              console.warn('⚠️ La tabla vsm_map_versions no existe o relación no encontrada. Desactivando historial de versiones.');
+              isVersionsHistoryDisabled = true;
+            }
+          } else {
+            console.log(`Resultado:\nOK`);
+            console.log(`Versión encontrada:\n${JSON.stringify(data)}`);
+            if (data) {
+              return {
+                id: data.id,
+                project_id: projectId,
+                name: data.name,
+                nodes: (data.canvas_data_json as any)?.nodes || [],
+                edges: (data.canvas_data_json as any)?.edges || [],
+                created_at: data.created_at,
+                action_name: data.action_name,
+                created_by_email: user?.email || 'Sistema'
+              };
+            }
+          }
         }
-        console.error('❌ Supabase: Error SQL o RLS al guardar la versión:', error?.message || error || 'Error desconocido');
+      } catch (err: any) {
+        console.error('❌ Supabase: Excepción al crear versión:', err.message || err);
       }
     }
 
@@ -466,33 +651,74 @@ export const db = {
   },
 
   async getVersions(projectId: string): Promise<VsmProjectVersion[]> {
-    if (isSupabaseConfigured && supabase) {
-      const { data: mapData } = await supabase
-        .from('vsm_maps')
-        .select('id')
-        .eq('project_id', projectId)
-        .single();
+    if (isSupabaseConfigured && supabase && !isVersionsHistoryDisabled) {
+      try {
+        console.log(`Consulta ejecutada:\nSELECT id FROM vsm_maps WHERE project_id = '${projectId}'`);
+        const { data: mapData, error: mapError } = await supabase
+          .from('vsm_maps')
+          .select('id')
+          .eq('project_id', projectId)
+          .maybeSingle();
 
-      if (mapData) {
-        const { data, error } = await supabase
-          .from('vsm_map_versions')
-          .select('*, profiles(email)')
-          .eq('map_id', mapData.id)
-          .order('created_at', { ascending: false });
-
-        if (!error && data) {
-          return data.map((v: any) => ({
-            id: v.id,
-            project_id: projectId,
-            name: v.name,
-            nodes: (v.canvas_data_json as any)?.nodes || [],
-            edges: (v.canvas_data_json as any)?.edges || [],
-            created_at: v.created_at,
-            action_name: v.action_name,
-            created_by_email: v.profiles?.email || 'Sistema'
-          }));
+        if (mapError) {
+          console.log(`Resultado:\nERROR: ${mapError.message}`);
+        } else {
+          console.log(`Resultado:\nOK`);
+          console.log(`Mapa encontrado:\n${JSON.stringify(mapData)}`);
         }
-        console.error('❌ Supabase: Error SQL o RLS al obtener versiones:', error.message || error);
+
+        if (mapData) {
+          console.log(`Consulta ejecutada:\nSELECT * FROM vsm_map_versions WHERE map_id = '${mapData.id}' ORDER BY created_at DESC`);
+          const { data, error } = await supabase
+            .from('vsm_map_versions')
+            .select('*')
+            .eq('map_id', mapData.id)
+            .order('created_at', { ascending: false });
+
+          if (error) {
+            console.log(`Resultado:\nERROR: ${error.message}`);
+            if (error.code === '42P01' || error.message?.includes('vsm_map_versions') || error.message?.includes('relation') || error.message?.includes('Could not find the table')) {
+              console.warn('⚠️ La tabla vsm_map_versions no existe o relación no encontrada. Desactivando historial de versiones.');
+              isVersionsHistoryDisabled = true;
+            }
+          } else {
+            console.log(`Resultado:\nOK`);
+            console.log(`Versión encontrada:\n${JSON.stringify(data?.[0] || null)}`);
+            if (data) {
+              let profilesData: any[] = [];
+              const userIds = data.map((v: any) => v.created_by).filter(Boolean);
+              if (userIds.length > 0) {
+                console.log(`Consulta ejecutada:\nSELECT id, email FROM profiles WHERE id IN (${userIds.map(id => `'${id}'`).join(', ')})`);
+                const { data: profs, error: profsError } = await supabase
+                  .from('profiles')
+                  .select('id, email')
+                  .in('id', userIds);
+                if (profsError) {
+                  console.log(`Resultado:\nERROR profiles: ${profsError.message}`);
+                } else {
+                  console.log(`Resultado:\nOK profiles`);
+                  profilesData = profs || [];
+                }
+              }
+
+              return data.map((v: any) => {
+                const prof = profilesData.find(p => p.id === v.created_by);
+                return {
+                  id: v.id,
+                  project_id: projectId,
+                  name: v.name,
+                  nodes: (v.canvas_data_json as any)?.nodes || [],
+                  edges: (v.canvas_data_json as any)?.edges || [],
+                  created_at: v.created_at,
+                  action_name: v.action_name,
+                  created_by_email: prof?.email || 'Sistema'
+                };
+              });
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error('❌ Supabase: Excepción al obtener versiones:', err.message || err);
       }
     }
 
